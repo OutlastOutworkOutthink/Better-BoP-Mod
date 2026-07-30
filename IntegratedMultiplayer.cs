@@ -15,10 +15,11 @@ namespace BetterBoPMod;
 internal static class IntegratedMultiplayer
 {
     private const string ServerBaseUrl = "https://better-bop-server-production.up.railway.app";
-    private const string ServerTokenKey = "betterbop.server.token.0.4.0";
-    private const string RulesetId = "better-bop-0.4.0";
+    private const string ServerTokenKey = "betterbop.server.token.0.4.1";
+    private const string RulesetId = "better-bop-0.4.1";
     private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(20) };
     private static readonly SemaphoreSlim CheckLock = new(1, 1);
+    private static readonly SemaphoreSlim CommandSubmitLock = new(1, 1);
     private static ManualLogSource logger = null!;
     private static CancellationTokenSource? polling;
     private static string activeGameId = string.Empty;
@@ -27,6 +28,7 @@ internal static class IntegratedMultiplayer
     private static bool active;
 
     internal static bool Active => active;
+    internal static string ActiveGameId => activeGameId;
 
     internal static void Initialize(ManualLogSource logSource)
     {
@@ -93,9 +95,9 @@ internal static class IntegratedMultiplayer
             {
                 await StartHostAsync(match, token).ConfigureAwait(false);
             }
-            else if (match.Role == "away" && match.Status == "active" && !active)
+            else if (match.Status == "active" && !active)
             {
-                await StartAwayAsync(match, token).ConfigureAwait(false);
+                await ResumeParticipantAsync(match, token).ConfigureAwait(false);
             }
             if (showStatus) DiscordIntegrationPatch.RunOnMainThread(() => DiscordIntegrationPatch.SetButtonText(active ? "Game Active" : "Game Ready"));
         }
@@ -159,7 +161,7 @@ internal static class IntegratedMultiplayer
         logger.LogMessage($"Hosted Integrated match {match.BotGameId} as server game {match.GameId}.");
     }
 
-    private static async Task StartAwayAsync(IntegratedMatch match, string token)
+    private static async Task ResumeParticipantAsync(IntegratedMatch match, string token)
     {
         using HttpRequestMessage request = AuthorizedRequest(HttpMethod.Get, $"/v1/games/{match.GameId}", token);
         using HttpResponseMessage response = await HttpClient.SendAsync(request).ConfigureAwait(false);
@@ -172,10 +174,13 @@ internal static class IntegratedMultiplayer
             GameManager.Instance.SetLocalClient();
             GameManager.Client.CreateSession(new Il2CppStructArray<byte>(state), Il2CppSystem.Guid.Parse(match.GameId!));
             GameManager.Instance.LoadLevel();
+            // The server snapshot is the initial state. Replaying from command
+            // zero restores every normal and Better BoP command after a restart.
+            nextCommandIndex = 0;
             active = true;
             return true;
         }).ConfigureAwait(false);
-        logger.LogMessage($"Joined Integrated match {match.BotGameId} as away player.");
+        logger.LogMessage($"Loaded Integrated match {match.BotGameId} as {match.Role} and prepared ordered command replay.");
     }
 
     private static GameSettings BuildSettings(IntegratedMatch match)
@@ -226,13 +231,40 @@ internal static class IntegratedMultiplayer
         try
         {
             byte[] serialized = SerializeCommand(command);
+            await PostSerializedCommandAsync(serialized, command is EndTurnCommand).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            logger.LogError($"Integrated command upload failed: {exception}");
+        }
+    }
+
+    internal static async Task SubmitGiftAsync(GiftStars.GiftEnvelope gift)
+    {
+        if (!active || string.IsNullOrWhiteSpace(activeGameId))
+            throw new InvalidOperationException("Gift Stars multiplayer requires an active Integrated game.");
+
+        byte[] serialized = GiftStars.Serialize(gift);
+        await PostSerializedCommandAsync(serialized, false).ConfigureAwait(false);
+        await RunOnMainThreadAsync(() =>
+        {
+            GiftStars.ApplyGift(GameManager.GameState, gift, true);
+            return true;
+        }).ConfigureAwait(false);
+    }
+
+    private static async Task PostSerializedCommandAsync(byte[] serialized, bool endsTurn)
+    {
+        await CommandSubmitLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
             string token = await EnsureServerTokenAsync().ConfigureAwait(false);
             string payload = JsonSerializer.Serialize(new
             {
                 commandIndex = nextCommandIndex,
                 serializedData = Convert.ToBase64String(serialized),
                 clientStateHash = (string?)null,
-                endsTurn = command is EndTurnCommand,
+                endsTurn,
             });
             using HttpRequestMessage request = AuthorizedRequest(HttpMethod.Post, $"/v1/games/{activeGameId}/commands", token, payload);
             using HttpResponseMessage response = await HttpClient.SendAsync(request).ConfigureAwait(false);
@@ -241,9 +273,9 @@ internal static class IntegratedMultiplayer
             CommandResponse? result = JsonSerializer.Deserialize<CommandResponse>(body);
             if (result != null) nextCommandIndex = result.NextCommandIndex;
         }
-        catch (Exception exception)
+        finally
         {
-            logger.LogError($"Integrated command upload failed: {exception}");
+            CommandSubmitLock.Release();
         }
     }
 
@@ -257,11 +289,19 @@ internal static class IntegratedMultiplayer
         foreach (RemoteCommand remote in list?.Commands ?? Array.Empty<RemoteCommand>())
         {
             if (remote.CommandIndex < nextCommandIndex) continue;
-            CommandBase command = DeserializeCommand(Convert.FromBase64String(remote.SerializedData));
+            byte[] serialized = Convert.FromBase64String(remote.SerializedData);
             await RunOnMainThreadAsync(() =>
             {
-                MethodInfo receive = AccessTools.Method(typeof(ClientBase), "ReceiveCommand", new[] { typeof(CommandBase) });
-                receive.Invoke(GameManager.Client, new object[] { command });
+                if (GiftStars.TryDeserialize(serialized, out GiftStars.GiftEnvelope? gift))
+                {
+                    GiftStars.ApplyGift(GameManager.GameState, gift!, false);
+                }
+                else
+                {
+                    CommandBase command = DeserializeCommand(serialized);
+                    MethodInfo receive = AccessTools.Method(typeof(ClientBase), "ReceiveCommand", new[] { typeof(CommandBase) });
+                    receive.Invoke(GameManager.Client, new object[] { command });
+                }
                 return true;
             }).ConfigureAwait(false);
             nextCommandIndex = remote.CommandIndex + 1;

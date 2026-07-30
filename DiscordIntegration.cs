@@ -18,7 +18,7 @@ namespace BetterBoPMod;
 internal static class DiscordIntegrationPatch
 {
     internal const string ApiBaseUrl = "https://polyeconomic-bot-production.up.railway.app";
-    internal const string ModVersion = "0.4.0";
+    internal const string ModVersion = "0.4.1";
     internal const string IntegrationTokenKey = "polyeconomic.integration.token";
     internal const string LinkedAccountIdKey = "polyeconomic.integration.account_id";
     private static readonly HttpClient HttpClient = new()
@@ -50,15 +50,20 @@ internal static class DiscordIntegrationPatch
 
             linkButton = UILibrary.NewRoundButton(__instance.rectTransform)
                 .SetStyle(UIButtonBase_UI2.ButtonStyle.Suggested);
-            linkButton.iconContainer.gameObject.SetActive(false);
-            linkButton.outline.gameObject.SetActive(false);
+            // The label lives inside iconContainer too. Hiding the whole
+            // container produced the unlabeled blue circle seen in 0.4.0.
+            linkButton.iconContainer.gameObject.SetActive(true);
+            linkButton.icon.gameObject.SetActive(false);
             linkButton.titleTextField.textField.fontSize = 20f;
-            linkButton.SetSize(250f, 72f);
+            linkButton.SetButtonSize(UIRoundButton_UI2.ButtonSize.ExtraLarge);
+            linkButton.SetSize(320f, 76f);
             linkButton.OnClickedSignal.Add(
                 DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(BeginDiscordLink)
             );
             UpdateButtonForCurrentAccount();
             PositionButton(__instance);
+            linkButton.UpdateLabelVisibility();
+            linkButton.RunLayout();
         }
         catch (Exception exception)
         {
@@ -75,17 +80,17 @@ internal static class DiscordIntegrationPatch
 
     private static void PositionButton(ProfileScreen profile)
     {
-        if (linkButton == null || profile.faqButton == null)
+        if (linkButton == null)
         {
             return;
         }
 
-        RectTransform faqTransform = profile.faqButton.rectTransform;
         RectTransform linkTransform = linkButton.rectTransform;
-        linkTransform.anchorMin = faqTransform.anchorMin;
-        linkTransform.anchorMax = faqTransform.anchorMax;
-        linkTransform.pivot = faqTransform.pivot;
-        linkTransform.anchoredPosition = faqTransform.anchoredPosition + new Vector2(-190f, 0f);
+        linkTransform.anchorMin = Vector2.one;
+        linkTransform.anchorMax = Vector2.one;
+        linkTransform.pivot = Vector2.one;
+        linkTransform.anchoredPosition = new Vector2(-48f, -48f);
+        linkTransform.SetAsLastSibling();
     }
 
     private static void UpdateButtonForCurrentAccount()

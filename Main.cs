@@ -25,9 +25,22 @@ public static class Main
         loaded = true;
         GameLogicDataPatch.Logger = logger;
         OnlineGameStatePatch.Logger = logger;
+        BetterBoPRules.Logger = logger;
+        GiftStars.Initialize(logger);
         DiscordIntegrationPatch.Initialize(logger);
         IntegratedMultiplayer.Initialize(logger);
         Harmony.CreateAndPatchAll(typeof(GameLogicDataPatch));
+        Harmony.CreateAndPatchAll(typeof(BetterBoPParsedRulesPatch));
+        Harmony.CreateAndPatchAll(typeof(DiplomacyIncomePatch));
+        Harmony.CreateAndPatchAll(typeof(GiftStarsButtonPatch));
+        Harmony.CreateAndPatchAll(typeof(GenerousOpinionPatch));
+        Harmony.CreateAndPatchAll(typeof(GenerousLabelPatch));
+        Harmony.CreateAndPatchAll(typeof(EmbassyIncomeDisplayPatch));
+        Harmony.CreateAndPatchAll(typeof(HideLobbyInvitePatch));
+        Harmony.CreateAndPatchAll(typeof(BlockLobbyInvitePatch));
+        Harmony.CreateAndPatchAll(typeof(BlockManualMultiplayerGamePatch));
+        Harmony.CreateAndPatchAll(typeof(BlockRandomMatchPatch));
+        Harmony.CreateAndPatchAll(typeof(RedRandomMatchButtonPatch));
         Harmony.CreateAndPatchAll(typeof(OnlineGameStatePatch));
         Harmony.CreateAndPatchAll(typeof(DiscordIntegrationPatch));
         Harmony.CreateAndPatchAll(typeof(IntegratedCommandPatch));
@@ -44,8 +57,6 @@ public static class Main
 [HarmonyPatch]
 internal static class OnlineGameStatePatch
 {
-    private const int WarriorHealth = 150;
-
     internal static ManualLogSource Logger { get; set; } = null!;
 
     private static IEnumerable<MethodBase> TargetMethods()
@@ -63,20 +74,8 @@ internal static class OnlineGameStatePatch
     {
         try
         {
-            if (!__0.GameLogicData.TryGetData(UnitData.Type.Warrior, out UnitData warrior))
-            {
-                Logger.LogWarning(
-                    "Could not apply Warrior health to an online game state."
-                );
-                return;
-            }
-
-            int previousHealth = warrior.health;
-            warrior.health = WarriorHealth;
-            Logger.LogInfo(
-                $"Applied Warrior health to received game state: " +
-                $"{previousHealth} -> {WarriorHealth}."
-            );
+            BetterBoPRules.Apply(__0.GameLogicData);
+            Logger.LogInfo("Applied Better BoP rules to received online game state.");
         }
         catch (Exception exception)
         {
@@ -93,8 +92,6 @@ internal static class OnlineGameStatePatch
 [HarmonyPatch(typeof(GameLogicData), nameof(GameLogicData.AddGameLogicPlaceholders))]
 internal static class GameLogicDataPatch
 {
-    private const int WarriorHealth = 150;
-
     internal static ManualLogSource Logger { get; set; } = null!;
 
     [HarmonyPrefix]
@@ -111,11 +108,11 @@ internal static class GameLogicDataPatch
             }
 
             int? previousHealth = warrior.Value<int?>("health");
-            warrior["health"] = WarriorHealth;
+            warrior["health"] = BetterBoPRules.WarriorHealth;
 
             Logger.LogInfo(
                 $"Applied Warrior health during game-logic load: " +
-                $"{previousHealth?.ToString() ?? "missing"} -> {WarriorHealth}."
+                $"{previousHealth?.ToString() ?? "missing"} -> {BetterBoPRules.WarriorHealth}."
             );
         }
         catch (Exception exception)
