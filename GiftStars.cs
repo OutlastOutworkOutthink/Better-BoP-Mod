@@ -489,7 +489,8 @@ internal static class EmbassyIncomeDisplayPatch
         if (local.relations.TryGetValue(viewed.Id, out DiplomacyRelation relation))
         {
             int multiplier = hasDiplomacy ? 2 : 1;
-            __instance.embassyIncome.Amount = Math.Max(0, relation.EmbassyLevel) * multiplier;
+            int baseIncome = PlayerDiplomacyExtensions.GetIncomeFromEmbassy(local, viewed, state);
+            __instance.embassyIncome.Amount = Math.Max(0, baseIncome) * multiplier;
         }
     }
 }

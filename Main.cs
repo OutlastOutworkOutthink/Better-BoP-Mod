@@ -34,6 +34,7 @@ public static class Main
         SafePatch(typeof(GiftStarsButtonPatch), logger);
         SafePatch(typeof(EmbassyIncomeDisplayPatch), logger);
         SafePatch(typeof(BetterBoPTechPopupPatch), logger);
+        SafePatch(typeof(BetterBoPTechTreeUnlockIconPatch), logger);
         SafePatch(typeof(BetterBoPTechInfoTextPatch), logger);
 
         SafePatch(typeof(BetterBoPParsedRulesPatch), logger);
@@ -41,6 +42,9 @@ public static class Main
         SafePatch(typeof(AlwaysAvailablePeacePatch), logger);
         SafePatch(typeof(AlwaysAvailablePeaceHasAbilityPatch), logger);
         SafePatch(typeof(DiplomacyActionButtonRulesPatch), logger);
+        SafePatch(typeof(EmbassyActionButtonRegistryResetPatch), logger);
+        SafePatch(typeof(EmbassyActionPointerClickPatch), logger);
+        SafePatch(typeof(EmbassyActionButtonClickPatch), logger);
         SafePatch(typeof(EmbassyUnavailableRequirementPatch), logger);
         SafePatch(typeof(EmbassyDescriptionPatch), logger);
         SafePatch(typeof(AimoDescriptionPatch), logger);

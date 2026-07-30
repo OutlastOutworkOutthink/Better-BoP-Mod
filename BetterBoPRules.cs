@@ -85,37 +85,122 @@ internal static class BetterBoPParsedRulesPatch
     }
 }
 
-[HarmonyPatch(typeof(StartTurnAction), nameof(StartTurnAction.ExecuteDefault))]
+[HarmonyPatch(typeof(StartTurnAction), nameof(StartTurnAction.Execute))]
 internal static class DiplomacyEmbassyIncomePatch
 {
-    [HarmonyPostfix]
-    private static void DoubleDiplomacyEmbassyIncome(GameState gameState)
+    [HarmonyPrefix]
+    private static void UseDoubledIncomeForDiplomacy(
+        StartTurnAction __instance,
+        GameState state,
+        out int __state
+    )
     {
+        __state = state.GameLogicData.DiplomacyData.embassyIncome;
         try
         {
-            if (!gameState.TryGetPlayer(gameState.CurrentPlayer, out PlayerState player)) return;
-            if (!gameState.GameLogicData.IsUnlocked(TechData.Type.Diplomacy, player)) return;
-
-            int additionalIncome = 0;
-            foreach (var relation in player.relations)
-            {
-                additionalIncome += Math.Max(0, relation.Value.EmbassyLevel);
-            }
-            if (additionalIncome <= 0) return;
-
-            player.Currency += additionalIncome;
-            ResourceEvents.ResourceAdded(
-                player.Id,
-                ResourceManager.Type.Currency,
-                additionalIncome,
-                player.Currency
-            );
-            ResourceEvents.RefreshWallets(player.Id);
+            if (!state.TryGetPlayer(__instance.PlayerId, out PlayerState player)) return;
+            if (!state.GameLogicData.IsUnlocked(TechData.Type.Diplomacy, player)) return;
+            state.GameLogicData.DiplomacyData.embassyIncome = checked(__state * 2);
         }
         catch (Exception exception)
         {
-            BetterBoPRules.Logger.LogError($"Could not apply doubled Diplomacy embassy income: {exception}");
+            state.GameLogicData.DiplomacyData.embassyIncome = __state;
+            BetterBoPRules.Logger.LogError($"Could not prepare doubled Diplomacy embassy income: {exception}");
         }
+    }
+
+    [HarmonyPostfix]
+    private static void RestoreStrategyIncome(GameState state, int __state)
+    {
+        state.GameLogicData.DiplomacyData.embassyIncome = __state;
+    }
+
+    [HarmonyFinalizer]
+    private static Exception? RestoreStrategyIncomeAfterFailure(
+        Exception? __exception,
+        GameState state,
+        int __state
+    )
+    {
+        try
+        {
+            state.GameLogicData.DiplomacyData.embassyIncome = __state;
+        }
+        catch (Exception restoreException)
+        {
+            BetterBoPRules.Logger.LogError($"Could not restore Strategy embassy income: {restoreException}");
+        }
+        return __exception;
+    }
+}
+
+internal static class EmbassyActionButtonRegistry
+{
+    private static readonly Dictionary<IntPtr, Action> Actions = new();
+    private static IntPtr lastExecutedButton;
+    private static int lastExecutedFrame = -1;
+
+    internal static void Clear()
+    {
+        Actions.Clear();
+        lastExecutedButton = IntPtr.Zero;
+        lastExecutedFrame = -1;
+    }
+
+    internal static void Register(UIRoundButton button, Action action)
+    {
+        Actions[button.Pointer] = action;
+    }
+
+    internal static bool TryExecute(UIButtonBase button)
+    {
+        if (button is not UIRoundButton roundButton ||
+            !Actions.TryGetValue(roundButton.Pointer, out Action? action))
+        {
+            return false;
+        }
+
+        // Unity can route one physical click through both the pointer handler
+        // and its backing Button event. Consume the second route in the same
+        // frame without executing the command twice or falling back to vanilla.
+        if (lastExecutedButton == roundButton.Pointer && lastExecutedFrame == Time.frameCount)
+        {
+            return true;
+        }
+        lastExecutedButton = roundButton.Pointer;
+        lastExecutedFrame = Time.frameCount;
+        action();
+        return true;
+    }
+}
+
+[HarmonyPatch(typeof(PlayerInfoPopup), nameof(PlayerInfoPopup.UpdateDiplomacyActionButtons))]
+internal static class EmbassyActionButtonRegistryResetPatch
+{
+    [HarmonyPrefix]
+    private static void ResetEmbassyButtons()
+    {
+        EmbassyActionButtonRegistry.Clear();
+    }
+}
+
+[HarmonyPatch(typeof(UIButtonBase), nameof(UIButtonBase.OnPointerClick))]
+internal static class EmbassyActionPointerClickPatch
+{
+    [HarmonyPrefix]
+    private static bool InterceptEmbassyPointerClick(UIButtonBase __instance)
+    {
+        return !EmbassyActionButtonRegistry.TryExecute(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(UIButtonBase), nameof(UIButtonBase.OnButtonClicked))]
+internal static class EmbassyActionButtonClickPatch
+{
+    [HarmonyPrefix]
+    private static bool InterceptEmbassyButtonClick(UIButtonBase __instance)
+    {
+        return !EmbassyActionButtonRegistry.TryExecute(__instance);
     }
 }
 
@@ -176,7 +261,7 @@ internal static class DiplomacyActionButtonRulesPatch
         __result.ButtonEnabled = true;
         __result.BlockButton = false;
         __result.buttonActive = available;
-        __result.OnClickedSignal.Add(DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() =>
+        Action action = () =>
         {
             if (available)
             {
@@ -189,7 +274,14 @@ internal static class DiplomacyActionButtonRulesPatch
                     gameState.GameLogicData.GetTechData(TechData.Type.Shields)
                 );
             }
-        }));
+        };
+        EmbassyActionButtonRegistry.Register(__result, action);
+        // Retain a signal fallback for non-pointer input. Registered pointer and
+        // button clicks are intercepted before vanilla can also run its stale
+        // Diplomacy callback.
+        __result.OnClickedSignal.Add(
+            DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() => action())
+        );
     }
 }
 
@@ -263,14 +355,84 @@ internal static class BetterBoPTechPopupPatch
 
     private static void AddInfo(RectTransform parent, int sprite, string header, string description)
     {
-        UIRoundButton_UI2 button = UILibrary.NewRoundButton(parent)
+        // Use the exact container and size used by the native unlock boons.
+        // The old custom Large button was parented to the content root, which
+        // forced it into the centre and made it cover the surrounding boons.
+        var existingButtons = parent.GetComponentsInChildren<UIRoundButton_UI2>(true);
+        RectTransform boonParent = parent;
+        if (existingButtons.Length > 0)
+        {
+            RectTransform? nativeParent = existingButtons[0].rectTransform.parent.TryCast<RectTransform>();
+            if (nativeParent != null) boonParent = nativeParent;
+        }
+
+        UIRoundButton_UI2 button = UILibrary.NewRoundButton(boonParent)
             .SetStyle(UIButtonBase_UI2.ButtonStyle.Default)
-            .SetButtonSize(UIRoundButton_UI2.ButtonSize.Large)
+            .SetButtonSize(UIRoundButton_UI2.ButtonSize.Regular)
             .SetSprite(sprite, 0.58f);
         button.Text = header;
+        button.ClearCallbacks();
+        TechPopupContent.AddInfoIcon(button);
         TechPopupContent.AddInfoPopup(button, header, description);
         button.UpdateLabelVisibility();
         button.RunLayout();
+        button.rectTransform.SetAsLastSibling();
+    }
+}
+
+[HarmonyPatch(typeof(TechItem), nameof(TechItem.GetUnlockItems))]
+internal static class BetterBoPTechTreeUnlockIconPatch
+{
+    [HarmonyPostfix]
+    private static void AddVisibleTechTreeBoon(
+        TechData techData,
+        ref Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppReferenceArray<RectTransform> __result
+    )
+    {
+        int sprite = techData.type switch
+        {
+            TechData.Type.Shields => SpriteRef.UI_STARICON,
+            TechData.Type.Diplomacy => SpriteRef.UI_EMBASSY,
+            _ => -1,
+        };
+        if (sprite < 0 || __result == null || __result.Length == 0) return;
+
+        try
+        {
+            // Clone an unlock icon already produced by Polytopia. This preserves
+            // its exact node scale, outline, spacing, and layout behaviour while
+            // changing only the displayed sprite.
+            RectTransform template = __result[__result.Length - 1];
+            RectTransform clone = UnityEngine.Object.Instantiate(template, template.parent);
+            UnityEngine.Sprite boonSprite = GameManager.GetSpriteAtlasManager().GetSprite(sprite);
+            UnityEngine.UI.Image? icon = clone.GetComponent<UnityEngine.UI.Image>();
+            if (icon == null)
+            {
+                foreach (UnityEngine.UI.Image candidate in clone.GetComponentsInChildren<UnityEngine.UI.Image>(true))
+                {
+                    if (candidate.sprite == null) continue;
+                    icon = candidate;
+                    break;
+                }
+            }
+            if (icon != null)
+            {
+                icon.sprite = boonSprite;
+                icon.preserveAspect = true;
+                icon.color = Color.white;
+            }
+
+            var expanded = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppReferenceArray<RectTransform>(
+                __result.Length + 1
+            );
+            for (int index = 0; index < __result.Length; index++) expanded[index] = __result[index];
+            expanded[__result.Length] = clone;
+            __result = expanded;
+        }
+        catch (Exception exception)
+        {
+            BetterBoPRules.Logger.LogError($"Could not add the {techData.type} tech-tree boon icon: {exception}");
+        }
     }
 }
 
