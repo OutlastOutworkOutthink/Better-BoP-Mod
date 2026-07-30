@@ -1,4 +1,4 @@
-# Better Battle of Polytopia Mod 0.4.0
+# Better Battle of Polytopia Mod 0.4.1
 
 A multiplayer-aware PolyMod gameplay overhaul for The Battle of Polytopia.
 
@@ -6,6 +6,11 @@ A multiplayer-aware PolyMod gameplay overhaul for The Battle of Polytopia.
 
 - Regular Warrior maximum health increased to 15 HP (`150` in the game's
   internal stat scale).
+- Peace treaties can be offered without researching a technology.
+- Strategy now unlocks embassies, capital vision, and Gift Stars. Strategy
+  embassies produce 1 star per level; Diplomacy raises that to the original 2.
+- Gift Stars offers 5, 10, or 20-star transfers with confirmation. The recipient
+  receives 80%, and AI recipients gain a two-turn **Generous** relation bonus.
 - Reapplies Better Battle of Polytopia game logic whenever Polytopia parses a
   fresh copy for a multiplayer session.
 - Reapplies the same rules before the client processes a game state received
@@ -16,6 +21,9 @@ A multiplayer-aware PolyMod gameplay overhaul for The Battle of Polytopia.
 - Polls Discord-created **Integrated** assignments from the Better BoP server.
 - Automatically fixes the opener as host, loads the two-player match after both
   Discord confirmations, relays serialized commands, and reports the winner.
+- Relays Gift Stars through the same ordered Integrated command stream.
+- Temporarily disables manual friend invites and official random/manual game
+  creation. Integrated games must be created and hosted through the Discord bot.
 
 After linking, the profile button becomes **Check Games**. Discord games opened
 with `?open Classic Integrated` or `?open Modern 5 Integrated` appear there
@@ -24,7 +32,7 @@ after both players accept the Discord prompt.
 ## Multiplayer requirements
 
 - Every player must install the same release of this mod.
-- Start a new test match after installing version 0.4.0.
+- Start a new test match after installing version 0.4.1.
 - Keep `manifest.json`, `patch.json`, and `BetterBoPMod.dll` together
   in the installed mod folder.
 
