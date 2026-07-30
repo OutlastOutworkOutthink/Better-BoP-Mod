@@ -1,16 +1,19 @@
-# Better Battle of Polytopia Mod 0.4.1
+# Better Battle of Polytopia Mod 0.4.2
 
 A multiplayer-aware PolyMod gameplay overhaul for The Battle of Polytopia.
 
 ## Current changes
 
-- Regular Warrior maximum health increased to 15 HP (`150` in the game's
-  internal stat scale).
+- Warriors use the normal game health value; the former 15 HP override has
+  been removed from both JSON and runtime code.
 - Peace treaties can be offered without researching a technology.
 - Strategy now unlocks embassies, capital vision, and Gift Stars. Strategy
-  embassies produce 1 star per level; Diplomacy raises that to the original 2.
+  embassies produce 1 star per level; Diplomacy doubles all current and future
+  embassy income to 2 stars per level.
 - Gift Stars offers 5, 10, or 20-star transfers with confirmation. The recipient
-  receives 80%, and AI recipients gain a two-turn **Generous** relation bonus.
+  receives 80%, and AI recipients gain a temporary clickable **Generous** boon.
+- Mind Benders are unlocked by Meditation instead of Philosophy. Ai-Mo starts
+  with Meditation and a Mind Bender.
 - Reapplies Better Battle of Polytopia game logic whenever Polytopia parses a
   fresh copy for a multiplayer session.
 - Reapplies the same rules before the client processes a game state received
@@ -32,13 +35,12 @@ after both players accept the Discord prompt.
 ## Multiplayer requirements
 
 - Every player must install the same release of this mod.
-- Start a new test match after installing version 0.4.1.
+- Start a new test match after installing version 0.4.2.
 - Keep `manifest.json`, `patch.json`, and `BetterBoPMod.dll` together
   in the installed mod folder.
 
-The PolyScript writes `Better Battle of Polytopia multiplayer` and an
-`Applied Warrior health` entry to the BepInEx log. These messages confirm which
-multiplayer loading path received the patched rules.
+The BepInEx log writes `Applied Better BoP technology, diplomacy, embassy, Mind
+Bender, and Ai-Mo rules` when the gameplay rules are loaded.
 
 ## Install for development
 

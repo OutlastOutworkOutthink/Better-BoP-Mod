@@ -18,7 +18,7 @@ namespace BetterBoPMod;
 internal static class DiscordIntegrationPatch
 {
     internal const string ApiBaseUrl = "https://polyeconomic-bot-production.up.railway.app";
-    internal const string ModVersion = "0.4.1";
+    internal const string ModVersion = "0.4.2";
     internal const string IntegrationTokenKey = "polyeconomic.integration.token";
     internal const string LinkedAccountIdKey = "polyeconomic.integration.account_id";
     private static readonly HttpClient HttpClient = new()
@@ -49,14 +49,19 @@ internal static class DiscordIntegrationPatch
             }
 
             linkButton = UILibrary.NewRoundButton(__instance.rectTransform)
-                .SetStyle(UIButtonBase_UI2.ButtonStyle.Suggested);
-            // The label lives inside iconContainer too. Hiding the whole
-            // container produced the unlabeled blue circle seen in 0.4.0.
+                .SetStyle(UIButtonBase_UI2.ButtonStyle.Suggested)
+                .SetSprite(SpriteRef.UI_DISCORD, 0.55f);
             linkButton.iconContainer.gameObject.SetActive(true);
-            linkButton.icon.gameObject.SetActive(false);
-            linkButton.titleTextField.textField.fontSize = 20f;
+            linkButton.icon.gameObject.SetActive(true);
+            linkButton.icon.raycastTarget = false;
+            linkButton.titleTextField.textField.raycastTarget = false;
+            linkButton.titleTextField.textField.fontSize = 18f;
             linkButton.SetButtonSize(UIRoundButton_UI2.ButtonSize.ExtraLarge);
-            linkButton.SetSize(320f, 76f);
+            linkButton.SetSize(280f, 92f);
+            linkButton.BG.raycastTarget = true;
+            linkButton.ButtonEnabled = true;
+            linkButton.blockClick = false;
+            linkButton.OnClickedSignal.Clear();
             linkButton.OnClickedSignal.Add(
                 DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(BeginDiscordLink)
             );
@@ -187,7 +192,15 @@ internal static class DiscordIntegrationPatch
             RunOnMainThread(() =>
             {
                 SetButtonText("Finish in browser");
-                NativeHelpers.OpenURL(linkSession.LinkUrl, false);
+                try
+                {
+                    Application.OpenURL(linkSession.LinkUrl);
+                }
+                catch (Exception exception)
+                {
+                    logger.LogWarning($"Unity could not open the Discord link, trying the native browser helper: {exception.Message}");
+                    NativeHelpers.OpenURL(linkSession.LinkUrl, false);
+                }
             });
 
             bool completed = await WaitForCompletionAsync(linkSession.StatusUrl).ConfigureAwait(false);
