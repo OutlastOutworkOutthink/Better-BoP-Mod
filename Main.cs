@@ -47,6 +47,7 @@ public static class Main
         SafePatch(typeof(GenerousOpinionPatch), logger);
         SafePatch(typeof(GenerousReasonLabelPatch), logger);
         SafePatch(typeof(GenerousReasonButtonPatch), logger);
+        SafePatch(typeof(GenerousReasonClickPatch), logger);
         SafePatch(typeof(HideLobbyInvitePatch), logger);
         SafePatch(typeof(BlockLobbyInvitePatch), logger);
         SafePatch(typeof(BlockManualMultiplayerGamePatch), logger);

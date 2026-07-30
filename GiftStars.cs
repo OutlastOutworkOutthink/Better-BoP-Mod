@@ -143,23 +143,26 @@ internal static class GiftStars
             .SetHeader($"Gift stars to {target.UserName}")
             .SetDescription(string.Empty);
 
-        // This intentionally mirrors the city's level-up reward layout: three
-        // evenly spaced, circular choices with an icon and a short label.
+        // Mirror the city's level-up reward layout without letting the outer
+        // choices touch the popup edge. Affordable choices use the same blue
+        // suggested style as other available Polytopia rewards; unavailable
+        // amounts stay disabled and dark.
         UIBasicComponent choiceRow = UILibrary.NewEmptyComponent(popup.content);
-        choiceRow.SetSize(720f, 210f);
+        choiceRow.SetSize(460f, 170f);
         int[] amounts = { 5, 10, 20 };
         for (int index = 0; index < amounts.Length; index++)
         {
             int amount = amounts[index];
             bool affordable = local.Currency >= amount;
             UIRoundButton_UI2 choice = UILibrary.NewRoundButton(choiceRow.rectTransform)
-                .SetStyle(UIButtonBase_UI2.ButtonStyle.Default)
-                .SetButtonSize(UIRoundButton_UI2.ButtonSize.Large)
-                .SetSprite(SpriteRef.UI_STARICON, 0.62f);
+                .SetStyle(affordable
+                    ? UIButtonBase_UI2.ButtonStyle.Suggested
+                    : UIButtonBase_UI2.ButtonStyle.Default)
+                .SetButtonSize(UIRoundButton_UI2.ButtonSize.Regular)
+                .SetSprite(SpriteRef.UI_STARICON, 0.54f);
             choice.Text = $"{amount} stars";
-            choice.SetPosition((index - 1) * 220f, 0f);
+            choice.ClearCallbacks();
             choice.ButtonEnabled = affordable;
-            choice.OnClickedSignal.Clear();
             if (affordable)
             {
                 choice.OnClickedSignal.Add(
@@ -172,6 +175,9 @@ internal static class GiftStars
             }
             choice.UpdateLabelVisibility();
             choice.RunLayout();
+            choice.SetPosition((index - 1) * 135f, -4f);
+            choice.ApplyStyle();
+            choice.UpdateColors();
         }
 
         popup.SetDynamicContent(choiceRow);
@@ -263,7 +269,7 @@ internal static class GiftStars
     {
         ShowMessage(
             "generous",
-            "You have showed kindness to them.",
+            "You have shown kindness to them.",
             "Okay"
         );
     }
@@ -271,7 +277,17 @@ internal static class GiftStars
     private static void ShowMessage(string header, string description, string button)
     {
         BasicPopup popup = PopupManager.GetBasicPopup().SetHeader(header).SetDescription(description);
-        popup.SetMainButton(button, DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() => { }));
+        Il2CppReferenceArray<PopupBase.PopupButtonData> buttons = new(1);
+        buttons[0] = new PopupBase.PopupButtonData
+        {
+            id = 0,
+            text = button,
+            state = PopupBase.PopupButtonData.States.None,
+            closesPopup = true,
+            callback = DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() => { }),
+        };
+        popup.SetButtonData(buttons, false);
+        popup.RunLayout();
         popup.Show();
     }
 }
@@ -351,21 +367,69 @@ internal static class GenerousReasonLabelPatch
         PlayerState local = GameManager.LocalPlayer;
         if (viewed == null || local == null || !GiftStars.IsGenerous(GameManager.GameState, viewed.Id, local.Id)) return;
 
-        string original = ScriptLocalization.opinion_reason_like;
         const string generous = "generous";
         if (__result?.Contains(generous, StringComparison.OrdinalIgnoreCase) ?? false) return;
 
-        __result = string.IsNullOrWhiteSpace(__result)
-            ? generous
-            : $"{__result.TrimEnd().TrimEnd('.')} and {generous}.";
-        if (opinionColors != null)
+        Color generousColor = Color.green;
+        string likeReason = ScriptLocalization.opinion_reason_like;
+        if (opinionColors != null &&
+            !string.IsNullOrWhiteSpace(likeReason) &&
+            opinionColors.TryGetValue(likeReason, out Color likeColor))
         {
-            Color color = Color.green;
-            if (!string.IsNullOrWhiteSpace(original) && opinionColors.TryGetValue(original, out Color likeColor))
+            generousColor = likeColor;
+        }
+
+        // Polytopia creates at most three clickable opinion buttons. Appending a
+        // fourth word leaves it as plain text, so rebuild the displayed reason
+        // list with the first two existing reasons plus generous. This keeps the
+        // UI at three boons and lets SwapButtons create a real generous pill.
+        string result = __result ?? string.Empty;
+        List<(string Label, Color Color, int Position)> displayed = new();
+        if (opinionColors != null && !string.IsNullOrWhiteSpace(result))
+        {
+            foreach (var entry in opinionColors)
             {
-                color = likeColor;
+                if (string.IsNullOrWhiteSpace(entry.Key)) continue;
+                int position = result.IndexOf(entry.Key, StringComparison.OrdinalIgnoreCase);
+                if (position >= 0) displayed.Add((entry.Key, entry.Value, position));
             }
-            opinionColors[generous] = color;
+            displayed.Sort((left, right) => left.Position.CompareTo(right.Position));
+        }
+
+        if (displayed.Count > 0)
+        {
+            int firstStart = displayed[0].Position;
+            var last = displayed[^1];
+            string prefix = result[..firstStart];
+            string suffix = result[(last.Position + last.Label.Length)..].Trim();
+
+            List<string> labels = displayed.Take(2).Select(entry => entry.Label).ToList();
+            labels.Add(generous);
+            string joined = labels.Count switch
+            {
+                1 => labels[0],
+                2 => $"{labels[0]} and {labels[1]}",
+                _ => $"{labels[0]}, {labels[1]} and {labels[2]}",
+            };
+            string punctuation = suffix.EndsWith('.') ? "." : suffix;
+            __result = $"{prefix}{joined}{punctuation}";
+
+            if (opinionColors != null)
+            {
+                opinionColors.Clear();
+                foreach (var entry in displayed.Take(2))
+                {
+                    opinionColors[entry.Label] = entry.Color;
+                }
+                opinionColors[generous] = generousColor;
+            }
+        }
+        else
+        {
+            __result = string.IsNullOrWhiteSpace(__result)
+                ? generous
+                : $"{__result.TrimEnd().TrimEnd('.')} and {generous}.";
+            if (opinionColors != null) opinionColors[generous] = generousColor;
         }
     }
 }
@@ -379,12 +443,32 @@ internal static class GenerousReasonButtonPatch
         foreach (UITextButton button in __instance.existingOpinionButtons)
         {
             if (!string.Equals(button.text, "generous", StringComparison.OrdinalIgnoreCase)) continue;
-            button.OnClickedSignal.Clear();
+            button.ClearCallbacks();
             button.OnClickedSignal.Add(
                 DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(GiftStars.ShowGenerousInfo)
             );
             break;
         }
+    }
+}
+
+// SwapButtons can finish its text-to-button animation after its Harmony postfix.
+// Intercepting the final click by label guarantees that the generated generous
+// pill always opens its own explanation, regardless of that animation timing.
+[HarmonyPatch(typeof(UIButtonBase), nameof(UIButtonBase.OnPointerClick))]
+internal static class GenerousReasonClickPatch
+{
+    [HarmonyPrefix]
+    private static bool OpenGenerousInformation(UIButtonBase __instance)
+    {
+        if (__instance is not UITextButton button ||
+            !string.Equals(button.text, "generous", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        GiftStars.ShowGenerousInfo();
+        return false;
     }
 }
 
