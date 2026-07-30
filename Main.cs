@@ -28,7 +28,7 @@ public static class Main
         DiscordIntegrationPatch.Initialize(logger);
         IntegratedMultiplayer.Initialize(logger);
         // UI entry points are registered first. Every patch is isolated so an
-        // incompatible gameplay hook can never make Link Discord or Gift Stars
+        // incompatible gameplay hook can never make Connect Discord or Gift Stars
         // disappear again.
         SafePatch(typeof(DiscordIntegrationPatch), logger);
         SafePatch(typeof(GiftStarsButtonPatch), logger);
@@ -41,6 +41,7 @@ public static class Main
         SafePatch(typeof(AlwaysAvailablePeacePatch), logger);
         SafePatch(typeof(AlwaysAvailablePeaceHasAbilityPatch), logger);
         SafePatch(typeof(DiplomacyActionButtonRulesPatch), logger);
+        SafePatch(typeof(EmbassyUnavailableRequirementPatch), logger);
         SafePatch(typeof(EmbassyDescriptionPatch), logger);
         SafePatch(typeof(AimoDescriptionPatch), logger);
         SafePatch(typeof(GenerousOpinionPatch), logger);

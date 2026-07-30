@@ -141,25 +141,42 @@ internal static class GiftStars
 
         BasicPopup popup = PopupManager.GetBasicPopup()
             .SetHeader($"Gift stars to {target.UserName}")
-            .SetDescription("Choose 5, 10, or 20 stars. The receiving tribe gets 80% of the amount sent.");
+            .SetDescription(string.Empty);
+
+        // This intentionally mirrors the city's level-up reward layout: three
+        // evenly spaced, circular choices with an icon and a short label.
+        UIBasicComponent choiceRow = UILibrary.NewEmptyComponent(popup.content);
+        choiceRow.SetSize(720f, 210f);
         int[] amounts = { 5, 10, 20 };
-        Il2CppReferenceArray<PopupBase.PopupButtonData> buttons = new(amounts.Length + 1);
         for (int index = 0; index < amounts.Length; index++)
         {
             int amount = amounts[index];
             bool affordable = local.Currency >= amount;
-            buttons[index] = new PopupBase.PopupButtonData
+            UIRoundButton_UI2 choice = UILibrary.NewRoundButton(choiceRow.rectTransform)
+                .SetStyle(UIButtonBase_UI2.ButtonStyle.Default)
+                .SetButtonSize(UIRoundButton_UI2.ButtonSize.Large)
+                .SetSprite(SpriteRef.UI_STARICON, 0.62f);
+            choice.Text = $"{amount} stars";
+            choice.SetPosition((index - 1) * 220f, 0f);
+            choice.ButtonEnabled = affordable;
+            choice.OnClickedSignal.Clear();
+            if (affordable)
             {
-                id = amount,
-                text = $"{amount} stars → {amount * 4 / 5}",
-                state = affordable ? PopupBase.PopupButtonData.States.None : PopupBase.PopupButtonData.States.Disabled,
-                closesPopup = true,
-                callback = affordable
-                    ? DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() => ShowConfirmation(target, amount))
-                    : DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() => { }),
-            };
+                choice.OnClickedSignal.Add(
+                    DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() =>
+                    {
+                        popup.Hide();
+                        ShowConfirmation(target, amount);
+                    })
+                );
+            }
+            choice.UpdateLabelVisibility();
+            choice.RunLayout();
         }
-        buttons[amounts.Length] = new PopupBase.PopupButtonData
+
+        popup.SetDynamicContent(choiceRow);
+        Il2CppReferenceArray<PopupBase.PopupButtonData> buttons = new(1);
+        buttons[0] = new PopupBase.PopupButtonData
         {
             id = 0,
             text = "Cancel",
@@ -168,6 +185,7 @@ internal static class GiftStars
             callback = DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() => { }),
         };
         popup.SetButtonData(buttons, false);
+        popup.RunLayout();
         popup.Show();
     }
 
@@ -175,12 +193,26 @@ internal static class GiftStars
     {
         BasicPopup popup = PopupManager.GetBasicPopup()
             .SetHeader("Confirm Star Gift")
-            .SetDescription($"Send {amount} stars to {target.UserName}? They will receive {amount * 4 / 5} stars.");
-        popup.SetMainButton(
-            $"Gift {amount} stars",
-            DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() => BeginGift(target.Id, amount))
-        );
-        popup.SetSecondaryButton("Cancel", DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() => { }));
+            .SetDescription($"Send {amount} stars to {target.UserName}?");
+        Il2CppReferenceArray<PopupBase.PopupButtonData> buttons = new(2);
+        buttons[0] = new PopupBase.PopupButtonData
+        {
+            id = 0,
+            text = "Cancel",
+            state = PopupBase.PopupButtonData.States.Alternative,
+            closesPopup = true,
+            callback = DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() => { }),
+        };
+        buttons[1] = new PopupBase.PopupButtonData
+        {
+            id = amount,
+            text = $"Gift {amount} stars",
+            state = PopupBase.PopupButtonData.States.None,
+            closesPopup = true,
+            callback = DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() => BeginGift(target.Id, amount)),
+        };
+        popup.SetButtonData(buttons, false);
+        popup.RunLayout();
         popup.Show();
     }
 
@@ -230,8 +262,8 @@ internal static class GiftStars
     internal static void ShowGenerousInfo()
     {
         ShowMessage(
-            "Generous",
-            "This tribe remembers your gift as a major boon, giving the strongest positive relation boost.",
+            "generous",
+            "You have showed kindness to them.",
             "Okay"
         );
     }
@@ -266,7 +298,11 @@ internal static class GiftStarsButtonPatch
             button.buttonActive = state.CurrentPlayer == local.Id;
             button.buttonExpensive = false;
             button.OnClickedSignal.Add(
-                DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() => GiftStars.ShowAmountPicker(player))
+                DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() =>
+                {
+                    __instance.Hide();
+                    GiftStars.ShowAmountPicker(player);
+                })
             );
             __instance.actionButtons.Add(button);
 
@@ -289,17 +325,14 @@ internal static class GiftStarsButtonPatch
     }
 }
 
-[HarmonyPatch(typeof(OpinionManager), nameof(OpinionManager.UpdateOpinion))]
+[HarmonyPatch(typeof(OpinionManager), nameof(OpinionManager.GetOpinion))]
 internal static class GenerousOpinionPatch
 {
     [HarmonyPostfix]
-    private static void AddGenerousReason(OpinionManager __instance, GameState gameState, PlayerState player, PlayerState opponent)
+    private static void AddGenerousBoon(GameState gameState, PlayerState playerState, byte opponent, ref float __result)
     {
-        if (!GiftStars.IsGenerous(gameState, player.Id, opponent.Id)) return;
-        if (__instance.Opinions.TryGetValue(opponent.Id, out OpinionState opinion))
-        {
-            opinion.AddOpinion(OpinionManager.LoveLimit, OpinionManager.Type.Like);
-        }
+        if (!GiftStars.IsGenerous(gameState, playerState.Id, opponent)) return;
+        __result = Math.Min(OpinionManager.LoveLimit, __result + OpinionManager.LoveLimit);
     }
 }
 
@@ -318,24 +351,21 @@ internal static class GenerousReasonLabelPatch
         PlayerState local = GameManager.LocalPlayer;
         if (viewed == null || local == null || !GiftStars.IsGenerous(GameManager.GameState, viewed.Id, local.Id)) return;
 
-        bool containsLike = false;
-        foreach (var reason in reasons)
-        {
-            if (reason.Key == OpinionManager.Type.Like)
-            {
-                containsLike = true;
-                break;
-            }
-        }
-        if (!containsLike) return;
-
         string original = ScriptLocalization.opinion_reason_like;
-        if (string.IsNullOrWhiteSpace(original)) return;
-        __result = __result.Replace(original, "Generous", StringComparison.OrdinalIgnoreCase);
-        if (opinionColors != null && opinionColors.TryGetValue(original, out Color color))
+        const string generous = "generous";
+        if (__result?.Contains(generous, StringComparison.OrdinalIgnoreCase) ?? false) return;
+
+        __result = string.IsNullOrWhiteSpace(__result)
+            ? generous
+            : $"{__result.TrimEnd().TrimEnd('.')} and {generous}.";
+        if (opinionColors != null)
         {
-            opinionColors.Remove(original);
-            opinionColors["Generous"] = color;
+            Color color = Color.green;
+            if (!string.IsNullOrWhiteSpace(original) && opinionColors.TryGetValue(original, out Color likeColor))
+            {
+                color = likeColor;
+            }
+            opinionColors[generous] = color;
         }
     }
 }
@@ -348,7 +378,7 @@ internal static class GenerousReasonButtonPatch
     {
         foreach (UITextButton button in __instance.existingOpinionButtons)
         {
-            if (!string.Equals(button.text, "Generous", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!string.Equals(button.text, "generous", StringComparison.OrdinalIgnoreCase)) continue;
             button.OnClickedSignal.Clear();
             button.OnClickedSignal.Add(
                 DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(GiftStars.ShowGenerousInfo)

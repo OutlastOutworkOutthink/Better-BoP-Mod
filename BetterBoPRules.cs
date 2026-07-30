@@ -28,13 +28,18 @@ internal static class BetterBoPRules
         MoveAbility(PlayerAbility.Type.Embassy, diplomacy, strategy);
         MoveAbility(PlayerAbility.Type.CapitalVision, diplomacy, strategy);
 
-        // Peace is intentionally not attached to any technology. The
-        // AlwaysAvailablePeacePatch below supplies the ability to every tribe.
+        // Keep peace off the visible technology tree, but attach it to the
+        // universally unlocked hidden Basic technology. PeaceTreatyCommand
+        // validates against the unlocked-abilities collection, so a UI-only
+        // IsUnlocked override is not sufficient.
         foreach (var tech in data.AllTechData)
         {
             RemoveAbility(tech.Value, PlayerAbility.Type.PeaceTreaty);
         }
-        RemoveAbility(basic, PlayerAbility.Type.PeaceTreaty);
+        if (!basic.abilityUnlocks.Contains(PlayerAbility.Type.PeaceTreaty))
+        {
+            basic.abilityUnlocks.Add(PlayerAbility.Type.PeaceTreaty);
+        }
 
         UnitData mindBender = data.GetUnitData(UnitData.Type.MindBender);
         while (philosophy.unitUnlocks.Contains(mindBender)) philosophy.unitUnlocks.Remove(mindBender);
@@ -163,9 +168,14 @@ internal static class DiplomacyActionButtonRulesPatch
 
         PlayerState local = GameManager.LocalPlayer;
         bool available = isPeace || gameState.GameLogicData.IsUnlocked(TechData.Type.Shields, local);
-        __result.buttonActive = available;
+        // The vanilla control wires separate enabled and disabled callbacks
+        // that both retain Diplomacy as the requirement. Clear every callback,
+        // not only the signal, or one click can establish the embassy and then
+        // display the old Diplomacy warning afterward.
+        __result.ClearCallbacks();
+        __result.ButtonEnabled = true;
         __result.BlockButton = false;
-        __result.OnClickedSignal.Clear();
+        __result.buttonActive = available;
         __result.OnClickedSignal.Add(DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() =>
         {
             if (available)
@@ -180,6 +190,27 @@ internal static class DiplomacyActionButtonRulesPatch
                 );
             }
         }));
+    }
+}
+
+[HarmonyPatch(typeof(PlayerInfoPopup), nameof(PlayerInfoPopup.OnUnavailableDiplomacyCommandClicked))]
+internal static class EmbassyUnavailableRequirementPatch
+{
+    [HarmonyPrefix]
+    private static bool UseStrategyForEmbassies(CommandBase command, ref TechData techData)
+    {
+        if (command is not EstablishEmbassyCommand)
+        {
+            return true;
+        }
+
+        GameState state = GameManager.GameState;
+        techData = state.GameLogicData.GetTechData(TechData.Type.Shields);
+
+        // If Strategy is already researched, an obsolete vanilla callback must
+        // not show any unavailable popup. Otherwise the original popup may run,
+        // now displaying and linking to Strategy instead of Diplomacy.
+        return !state.GameLogicData.IsUnlocked(TechData.Type.Shields, GameManager.LocalPlayer);
     }
 }
 
@@ -234,8 +265,8 @@ internal static class BetterBoPTechPopupPatch
     {
         UIRoundButton_UI2 button = UILibrary.NewRoundButton(parent)
             .SetStyle(UIButtonBase_UI2.ButtonStyle.Default)
-            .SetButtonSize(UIRoundButton_UI2.ButtonSize.ExtraLarge)
-            .SetSprite(sprite, 0.7f);
+            .SetButtonSize(UIRoundButton_UI2.ButtonSize.Large)
+            .SetSprite(sprite, 0.58f);
         button.Text = header;
         TechPopupContent.AddInfoPopup(button, header, description);
         button.UpdateLabelVisibility();
