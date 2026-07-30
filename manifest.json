@@ -1,8 +1,8 @@
 {
   "id": "polyeconomic_balance",
   "name": "PolyEconomic Balance",
-  "description": "PolyEconomic rules with multiplayer game-logic reapplication.",
-  "version": "0.2.0",
+  "description": "PolyEconomic rules, multiplayer game logic, and Discord account integration.",
+  "version": "0.3.0",
   "authors": [
     "OutlastOutworkOutthink"
   ]

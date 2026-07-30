@@ -25,9 +25,11 @@ public static class Main
         loaded = true;
         GameLogicDataPatch.Logger = logger;
         OnlineGameStatePatch.Logger = logger;
+        DiscordIntegrationPatch.Initialize(logger);
         Harmony.CreateAndPatchAll(typeof(GameLogicDataPatch));
         Harmony.CreateAndPatchAll(typeof(OnlineGameStatePatch));
-        logger.LogMessage("PolyEconomic multiplayer game-logic hook loaded.");
+        Harmony.CreateAndPatchAll(typeof(DiscordIntegrationPatch));
+        logger.LogMessage("PolyEconomic multiplayer game-logic and Discord integration hooks loaded.");
     }
 }
 

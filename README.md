@@ -1,4 +1,4 @@
-# PolyEconomic Balance 0.2.0
+# PolyEconomic Balance 0.3.0
 
 A PolyMod rules mod for The Battle of Polytopia.
 
@@ -10,11 +10,14 @@ A PolyMod rules mod for The Battle of Polytopia.
   a multiplayer session.
 - Reapplies the same rules before the client processes a game state received
   from the multiplayer backend.
+- Adds a **Link Discord** button at the top-right of the in-game profile screen.
+- Links the signed-in Polytopia account through Discord OAuth without collecting
+  a Polytopia or Steam password.
 
 ## Multiplayer requirements
 
 - Every player must install the same release of this mod.
-- Start a new test match after installing version 0.2.0.
+- Start a new test match after installing version 0.3.0.
 - Keep `manifest.json`, `patch.json`, and `PolyEconomicMultiplayer.dll` together
   in the installed mod folder.
 
