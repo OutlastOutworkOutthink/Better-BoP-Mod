@@ -26,9 +26,12 @@ public static class Main
         GameLogicDataPatch.Logger = logger;
         OnlineGameStatePatch.Logger = logger;
         DiscordIntegrationPatch.Initialize(logger);
+        IntegratedMultiplayer.Initialize(logger);
         Harmony.CreateAndPatchAll(typeof(GameLogicDataPatch));
         Harmony.CreateAndPatchAll(typeof(OnlineGameStatePatch));
         Harmony.CreateAndPatchAll(typeof(DiscordIntegrationPatch));
+        Harmony.CreateAndPatchAll(typeof(IntegratedCommandPatch));
+        Harmony.CreateAndPatchAll(typeof(IntegratedResultPatch));
         logger.LogMessage("Better Battle of Polytopia Mod multiplayer and Discord integration hooks loaded.");
     }
 }
