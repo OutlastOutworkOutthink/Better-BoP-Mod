@@ -1,6 +1,8 @@
-# Better Battle of Polytopia Mod 0.4.8
+# Better Battle of Polytopia Mod — Alpha 0.4.8
 
-A multiplayer-aware PolyMod gameplay overhaul for The Battle of Polytopia.
+An alpha-stage, multiplayer-aware PolyMod gameplay overhaul for The Battle of
+Polytopia. The mod is under active development, so features and compatibility
+may change between Alpha releases.
 
 ## Current changes
 
@@ -35,7 +37,7 @@ A multiplayer-aware PolyMod gameplay overhaul for The Battle of Polytopia.
   fresh copy for a multiplayer session.
 - Reapplies the same rules before the client processes a game state received
   from the multiplayer backend.
-- Adds a text-only **Connect Discord** button at the top-right of the in-game profile screen. Version 0.4.8 takes full ownership of its inherited UI callbacks so it cannot open the stock logfile popup.
+- Adds a text-only **Connect Discord** button at the top-right of the in-game profile screen. Alpha 0.4.8 takes full ownership of its inherited UI callbacks so it cannot open the stock logfile popup.
 - Links the signed-in Polytopia account through Discord OAuth without collecting
   a Polytopia or Steam password.
 - Polls Discord-created **Integrated** assignments from the Better BoP server.
@@ -52,7 +54,7 @@ after both players accept the Discord prompt.
 ## Multiplayer requirements
 
 - Every player must install the same release of this mod.
-- Start a new test match after installing version 0.4.8.
+- Start a new test match after installing Alpha 0.4.8.
 - Keep `manifest.json`, `patch.json`, and `BetterBoPMod.dll` together
   in the installed mod folder.
 
