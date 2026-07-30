@@ -18,7 +18,7 @@ namespace BetterBoPMod;
 internal static class DiscordIntegrationPatch
 {
     internal const string ApiBaseUrl = "https://polyeconomic-bot-production.up.railway.app";
-    internal const string ModVersion = "0.4.3";
+    internal const string ModVersion = "0.4.4";
     internal const string IntegrationTokenKey = "polyeconomic.integration.token";
     internal const string LinkedAccountIdKey = "polyeconomic.integration.account_id";
     private static readonly HttpClient HttpClient = new()
@@ -50,30 +50,28 @@ internal static class DiscordIntegrationPatch
 
             linkButton = UILibrary.NewRoundButton(__instance.rectTransform)
                 .SetStyle(UIButtonBase_UI2.ButtonStyle.Suggested);
-            linkButton.iconContainer.gameObject.SetActive(true);
-            linkButton.titleTextField.textField.fontSize = 18f;
+            // UI_DISCORD is not present in every PC sprite atlas. Polytopia
+            // silently substitutes its question-mark sprite in that case, so
+            // this control intentionally uses a permanent text label instead.
+            linkButton.iconContainer.gameObject.SetActive(false);
+            linkButton.icon.gameObject.SetActive(false);
+            linkButton.titleTextField.gameObject.SetActive(true);
+            linkButton.textBg.gameObject.SetActive(true);
+            linkButton.titleTextField.textField.fontSize = 20f;
             linkButton.SetButtonSize(UIRoundButton_UI2.ButtonSize.ExtraLarge);
             linkButton.SetSize(300f, 96f);
+            linkButton.ButtonEnabled = true;
+            linkButton.blockClick = false;
+            linkButton.gameObject.SetActive(true);
             linkButton.OnClickedSignal.Clear();
             linkButton.OnClickedSignal.Add(
                 DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(BeginDiscordLink)
             );
             UpdateButtonForCurrentAccount();
-            try
-            {
-                linkButton.SetSprite(SpriteRef.UI_DISCORD, 0.5f);
-                linkButton.icon.gameObject.SetActive(true);
-            }
-            catch (Exception iconException)
-            {
-                // A text Link Discord button is still fully usable if a game
-                // build cannot resolve the Discord sprite.
-                linkButton.icon.gameObject.SetActive(false);
-                logger.LogWarning($"Discord icon unavailable; keeping text button: {iconException.Message}");
-            }
             PositionButton(__instance);
             linkButton.UpdateLabelVisibility();
             linkButton.RunLayout();
+            KeepTextLabelVisible();
         }
         catch (Exception exception)
         {
@@ -114,7 +112,8 @@ internal static class DiscordIntegrationPatch
         string linkedAccountId = PlayerPrefs.GetString(LinkedAccountIdKey, string.Empty);
         linkButton.Text = !string.IsNullOrWhiteSpace(linkedAccountId) && linkedAccountId == currentAccountId
             ? "Check Games"
-            : "Link Discord";
+            : "Connect Discord";
+        KeepTextLabelVisible();
     }
 
     private static void BeginDiscordLink()
@@ -126,6 +125,7 @@ internal static class DiscordIntegrationPatch
 
         try
         {
+            logger.LogMessage("Connect Discord clicked; creating an account-link session.");
             string accountId = AccountManager.PlayerAccountId.ToString();
             string linkedAccountId = PlayerPrefs.GetString(LinkedAccountIdKey, string.Empty);
             if (!string.IsNullOrWhiteSpace(linkedAccountId) && linkedAccountId == accountId)
@@ -199,12 +199,14 @@ internal static class DiscordIntegrationPatch
                 SetButtonText("Finish in browser");
                 try
                 {
-                    Application.OpenURL(linkSession.LinkUrl);
+                    // Polytopia's platform helper reliably hands URLs to the
+                    // Windows browser. Unity OpenURL can fail silently here.
+                    NativeHelpers.OpenURL(linkSession.LinkUrl, false);
                 }
                 catch (Exception exception)
                 {
-                    logger.LogWarning($"Unity could not open the Discord link, trying the native browser helper: {exception.Message}");
-                    NativeHelpers.OpenURL(linkSession.LinkUrl, false);
+                    logger.LogWarning($"Native browser helper failed, trying Unity OpenURL: {exception.Message}");
+                    Application.OpenURL(linkSession.LinkUrl);
                 }
             });
 
@@ -222,7 +224,7 @@ internal static class DiscordIntegrationPatch
                 }
                 else
                 {
-                    SetButtonText("Link Discord");
+                    SetButtonText("Connect Discord");
                 }
             });
         }
@@ -280,7 +282,22 @@ internal static class DiscordIntegrationPatch
         if (linkButton != null)
         {
             linkButton.Text = text;
+            linkButton.RunLayout();
+            KeepTextLabelVisible();
         }
+    }
+
+    private static void KeepTextLabelVisible()
+    {
+        if (linkButton == null)
+        {
+            return;
+        }
+
+        linkButton.iconContainer.gameObject.SetActive(false);
+        linkButton.icon.gameObject.SetActive(false);
+        linkButton.textBg.gameObject.SetActive(true);
+        linkButton.titleTextField.gameObject.SetActive(true);
     }
 
     private sealed class LinkSessionRequest

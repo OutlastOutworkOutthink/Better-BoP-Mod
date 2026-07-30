@@ -15,8 +15,8 @@ namespace BetterBoPMod;
 internal static class IntegratedMultiplayer
 {
     private const string ServerBaseUrl = "https://better-bop-server-production.up.railway.app";
-    private const string ServerTokenKey = "betterbop.server.token.0.4.3";
-    private const string RulesetId = "better-bop-0.4.3";
+    private const string ServerTokenKey = "betterbop.server.token.0.4.4";
+    private const string RulesetId = "better-bop-0.4.4";
     private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(20) };
     private static readonly SemaphoreSlim CheckLock = new(1, 1);
     private static readonly SemaphoreSlim CommandSubmitLock = new(1, 1);
@@ -112,7 +112,7 @@ internal static class IntegratedMultiplayer
         string stored = PlayerPrefs.GetString(ServerTokenKey, string.Empty);
         if (!string.IsNullOrWhiteSpace(stored)) return stored;
         string integrationToken = PlayerPrefs.GetString(DiscordIntegrationPatch.IntegrationTokenKey, string.Empty);
-        if (string.IsNullOrWhiteSpace(integrationToken)) throw new InvalidOperationException("Link Discord before opening Integrated games.");
+        if (string.IsNullOrWhiteSpace(integrationToken)) throw new InvalidOperationException("Connect Discord before opening Integrated games.");
         string json = JsonSerializer.Serialize(new
         {
             integrationToken,
