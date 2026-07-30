@@ -4,6 +4,9 @@ An alpha-stage, multiplayer-aware PolyMod gameplay overhaul for The Battle of
 Polytopia. The mod is under active development, so features and compatibility
 may change between Alpha releases.
 
+Development architecture, regression history, and focused test matrices live
+in [`DEVELOPMENT_NOTES.md`](DEVELOPMENT_NOTES.md).
+
 ## Current changes
 
 - Warriors use the normal game health value; the former 15 HP override has
