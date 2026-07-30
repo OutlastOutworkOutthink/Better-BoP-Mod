@@ -25,6 +25,8 @@ internal static class BetterBoPRules
         TechData meditation = data.GetTechData(TechData.Type.Meditation);
         TechData philosophy = data.GetTechData(TechData.Type.Philosophy);
 
+        GrowGiant.Apply(data);
+
         MoveAbility(PlayerAbility.Type.Embassy, diplomacy, strategy);
         MoveAbility(PlayerAbility.Type.CapitalVision, diplomacy, strategy);
 
@@ -76,7 +78,7 @@ internal static class BetterBoPParsedRulesPatch
         try
         {
             BetterBoPRules.Apply(__instance);
-            BetterBoPRules.Logger.LogInfo("Applied Better BoP technology, diplomacy, embassy, Mind Bender, and Ai-Mo rules.");
+            BetterBoPRules.Logger.LogInfo("Applied Better BoP technology, Grow Giant, diplomacy, embassy, Mind Bender, and Ai-Mo rules.");
         }
         catch (Exception exception)
         {
@@ -446,6 +448,7 @@ internal static class BetterBoPTechInfoTextPatch
         {
             TechData.Type.Shields => "Gift Stars: select another tribe to send 5, 10, or 20 stars. The receiving tribe gets 80%.",
             TechData.Type.Diplomacy => "Embassy Income Doubled: all current and future embassies give 2 stars per turn, or 4 during peace.",
+            TechData.Type.Spiritualism => "Grow Giant: build a Giant Seed on an empty field in your territory for 20 stars. It becomes a Giant at the start of your next turn.",
             _ => string.Empty,
         };
         if (string.IsNullOrEmpty(addition) || (__result?.Contains(addition, StringComparison.Ordinal) ?? false)) return;
