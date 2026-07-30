@@ -1,6 +1,5 @@
 using BepInEx.Logging;
 using HarmonyLib;
-using Newtonsoft.Json.Linq;
 using Polytopia.Data;
 using PolytopiaBackendBase.Game;
 using System.Reflection;
@@ -23,18 +22,23 @@ public static class Main
         }
 
         loaded = true;
-        GameLogicDataPatch.Logger = logger;
         OnlineGameStatePatch.Logger = logger;
         BetterBoPRules.Logger = logger;
         GiftStars.Initialize(logger);
         DiscordIntegrationPatch.Initialize(logger);
         IntegratedMultiplayer.Initialize(logger);
-        Harmony.CreateAndPatchAll(typeof(GameLogicDataPatch));
         Harmony.CreateAndPatchAll(typeof(BetterBoPParsedRulesPatch));
-        Harmony.CreateAndPatchAll(typeof(DiplomacyIncomePatch));
+        Harmony.CreateAndPatchAll(typeof(DiplomacyEmbassyIncomePatch));
+        Harmony.CreateAndPatchAll(typeof(AlwaysAvailablePeacePatch));
+        Harmony.CreateAndPatchAll(typeof(AlwaysAvailablePeaceHasAbilityPatch));
+        Harmony.CreateAndPatchAll(typeof(DiplomacyActionButtonRulesPatch));
+        Harmony.CreateAndPatchAll(typeof(EmbassyDescriptionPatch));
+        Harmony.CreateAndPatchAll(typeof(BetterBoPTechPopupPatch));
+        Harmony.CreateAndPatchAll(typeof(AimoDescriptionPatch));
         Harmony.CreateAndPatchAll(typeof(GiftStarsButtonPatch));
         Harmony.CreateAndPatchAll(typeof(GenerousOpinionPatch));
-        Harmony.CreateAndPatchAll(typeof(GenerousLabelPatch));
+        Harmony.CreateAndPatchAll(typeof(GenerousReasonLabelPatch));
+        Harmony.CreateAndPatchAll(typeof(GenerousReasonButtonPatch));
         Harmony.CreateAndPatchAll(typeof(EmbassyIncomeDisplayPatch));
         Harmony.CreateAndPatchAll(typeof(HideLobbyInvitePatch));
         Harmony.CreateAndPatchAll(typeof(BlockLobbyInvitePatch));
@@ -80,44 +84,6 @@ internal static class OnlineGameStatePatch
         catch (Exception exception)
         {
             Logger.LogError($"Failed to patch a received online state: {exception}");
-        }
-    }
-}
-
-/// <summary>
-/// PolyMod normally merges patch.json during its initial game-logic load. An
-/// online session can parse another copy later, so this prefix applies the
-/// required rule on every parse rather than only the first one.
-/// </summary>
-[HarmonyPatch(typeof(GameLogicData), nameof(GameLogicData.AddGameLogicPlaceholders))]
-internal static class GameLogicDataPatch
-{
-    internal static ManualLogSource Logger { get; set; } = null!;
-
-    [HarmonyPrefix]
-    private static void ApplyBetterBoPRules(ref JObject rootObject)
-    {
-        try
-        {
-            if (rootObject["unitData"]?["warrior"] is not JObject warrior)
-            {
-                Logger.LogWarning(
-                    "Could not apply Warrior health: unitData.warrior was not present."
-                );
-                return;
-            }
-
-            int? previousHealth = warrior.Value<int?>("health");
-            warrior["health"] = BetterBoPRules.WarriorHealth;
-
-            Logger.LogInfo(
-                $"Applied Warrior health during game-logic load: " +
-                $"{previousHealth?.ToString() ?? "missing"} -> {BetterBoPRules.WarriorHealth}."
-            );
-        }
-        catch (Exception exception)
-        {
-            Logger.LogError($"Failed to apply multiplayer game logic: {exception}");
         }
     }
 }

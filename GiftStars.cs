@@ -1,5 +1,6 @@
 using BepInEx.Logging;
 using HarmonyLib;
+using I2.Loc;
 using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using Polytopia.Data;
@@ -100,7 +101,7 @@ internal static class GiftStars
         }
         else if (GameManager.IsPlayerLocal(to.Id))
         {
-            ShowMessage("Gift Received", $"{from.UserName} gifted you {gift.Amount} stars. After the 20% transfer cost, you receive {received} stars.", $"Collect {received} ⭐");
+            ShowMessage("Gift Received", $"{from.UserName} gifted you {gift.Amount} stars. After the 20% transfer cost, you receive {received} stars.", $"Collect {received} stars");
         }
     }
 
@@ -150,7 +151,7 @@ internal static class GiftStars
             buttons[index] = new PopupBase.PopupButtonData
             {
                 id = amount,
-                text = $"⭐ {amount} → {amount * 4 / 5}",
+                text = $"{amount} stars → {amount * 4 / 5}",
                 state = affordable ? PopupBase.PopupButtonData.States.None : PopupBase.PopupButtonData.States.Disabled,
                 closesPopup = true,
                 callback = affordable
@@ -166,7 +167,7 @@ internal static class GiftStars
             closesPopup = true,
             callback = DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() => { }),
         };
-        popup.SetButtonData(buttons, true);
+        popup.SetButtonData(buttons, false);
         popup.Show();
     }
 
@@ -176,7 +177,7 @@ internal static class GiftStars
             .SetHeader("Confirm Star Gift")
             .SetDescription($"Send {amount} stars to {target.UserName}? They will receive {amount * 4 / 5} stars.");
         popup.SetMainButton(
-            $"Gift {amount} ⭐",
+            $"Gift {amount} stars",
             DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() => BeginGift(target.Id, amount))
         );
         popup.SetSecondaryButton("Cancel", DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() => { }));
@@ -226,6 +227,15 @@ internal static class GiftStars
         }
     }
 
+    internal static void ShowGenerousInfo()
+    {
+        ShowMessage(
+            "Generous",
+            "This tribe remembers your gift as a major boon, giving the strongest positive relation boost.",
+            "Okay"
+        );
+    }
+
     private static void ShowMessage(string header, string description, string button)
     {
         BasicPopup popup = PopupManager.GetBasicPopup().SetHeader(header).SetDescription(description);
@@ -252,7 +262,8 @@ internal static class GiftStarsButtonPatch
                 __instance.actionButtonContainer
             );
             button.gameObject.SetActive(true);
-            button.ShowIconAndTextContainer(__instance.embassyIncome.icon.sprite, "Gift Stars");
+            UnityEngine.Sprite star = GameManager.GetSpriteAtlasManager().GetSprite(SpriteRef.UI_STARICON);
+            button.SetSprite(star, false);
             button.SetText("Gift Stars");
             button.buttonActive = state.CurrentPlayer == local.Id;
             button.buttonExpensive = false;
@@ -282,18 +293,57 @@ internal static class GenerousOpinionPatch
     }
 }
 
-[HarmonyPatch(typeof(PlayerInfoPopup), nameof(PlayerInfoPopup.Refresh))]
-internal static class GenerousLabelPatch
+[HarmonyPatch(typeof(PlayerInfoPopup), nameof(PlayerInfoPopup.GetLocalizedTopReasons))]
+internal static class GenerousReasonLabelPatch
 {
     [HarmonyPostfix]
-    private static void ShowGenerousTag(PlayerInfoPopup __instance)
+    private static void UseGenerousReasonLabel(
+        PlayerInfoPopup __instance,
+        Il2CppSystem.Collections.Generic.List<Il2CppSystem.Collections.Generic.KeyValuePair<OpinionManager.Type, float>> reasons,
+        ref Il2CppSystem.Collections.Generic.Dictionary<string, Color> opinionColors,
+        ref string __result
+    )
     {
         PlayerState viewed = __instance.player;
         PlayerState local = GameManager.LocalPlayer;
         if (viewed == null || local == null || !GiftStars.IsGenerous(GameManager.GameState, viewed.Id, local.Id)) return;
-        if (!__instance.opinionText.text.Contains("Generous", StringComparison.Ordinal))
+
+        bool containsLike = false;
+        foreach (var reason in reasons)
         {
-            __instance.opinionText.text += "\n<color=#4FCB71>Generous</color> (2 turns)";
+            if (reason.Key == OpinionManager.Type.Like)
+            {
+                containsLike = true;
+                break;
+            }
+        }
+        if (!containsLike) return;
+
+        string original = ScriptLocalization.opinion_reason_like;
+        if (string.IsNullOrWhiteSpace(original)) return;
+        __result = __result.Replace(original, "Generous", StringComparison.OrdinalIgnoreCase);
+        if (opinionColors != null && opinionColors.TryGetValue(original, out Color color))
+        {
+            opinionColors.Remove(original);
+            opinionColors["Generous"] = color;
+        }
+    }
+}
+
+[HarmonyPatch(typeof(PlayerInfoPopup), nameof(PlayerInfoPopup.SwapButtons))]
+internal static class GenerousReasonButtonPatch
+{
+    [HarmonyPostfix]
+    private static void AttachGenerousPopup(PlayerInfoPopup __instance)
+    {
+        foreach (UITextButton button in __instance.existingOpinionButtons)
+        {
+            if (!string.Equals(button.text, "Generous", StringComparison.OrdinalIgnoreCase)) continue;
+            button.OnClickedSignal.Clear();
+            button.OnClickedSignal.Add(
+                DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(GiftStars.ShowGenerousInfo)
+            );
+            break;
         }
     }
 }
@@ -308,10 +358,7 @@ internal static class EmbassyIncomeDisplayPatch
         PlayerState local = GameManager.LocalPlayer;
         GameState state = GameManager.GameState;
         if (viewed == null || local == null || __instance.embassyIncome == null) return;
-        if (!state.GameLogicData.IsUnlocked(TechData.Type.Diplomacy, local)) return;
-        if (local.relations.TryGetValue(viewed.Id, out DiplomacyRelation relation))
-        {
-            __instance.embassyIncome.Amount = Math.Max(0, relation.EmbassyLevel) * 2;
-        }
+        __instance.embassyInfoText.text = "Embassy income: 1 star per turn, or 2 during peace. Diplomacy doubles those amounts to 2 and 4 stars per turn.";
+        __instance.embassyIncome.Amount = PlayerDiplomacyExtensions.GetIncomeFromEmbassy(local, viewed, state);
     }
 }
