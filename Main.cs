@@ -36,8 +36,15 @@ public static class Main
         SafePatch(typeof(BetterBoPTechPopupPatch), logger);
         SafePatch(typeof(BetterBoPTechTreeUnlockIconPatch), logger);
         SafePatch(typeof(BetterBoPTechInfoTextPatch), logger);
+        SafePatch(typeof(GrowGiantTechPopupPatch), logger);
 
         SafePatch(typeof(BetterBoPParsedRulesPatch), logger);
+        SafePatch(typeof(GrowGiantUnlockPatch), logger);
+        SafePatch(typeof(GrowGiantBuildRulesPatch), logger);
+        SafePatch(typeof(GrowGiantStartTurnPatch), logger);
+        SafePatch(typeof(GiantSeedDisplayNamePatch), logger);
+        SafePatch(typeof(GiantSeedImprovementIconPatch), logger);
+        SafePatch(typeof(GiantSeedWorldVisualPatch), logger);
         SafePatch(typeof(DiplomacyEmbassyIncomePatch), logger);
         SafePatch(typeof(AlwaysAvailablePeacePatch), logger);
         SafePatch(typeof(AlwaysAvailablePeaceHasAbilityPatch), logger);

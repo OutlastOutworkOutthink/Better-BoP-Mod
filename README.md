@@ -1,4 +1,4 @@
-# Better Battle of Polytopia Mod — Alpha 0.4.8
+# Better Battle of Polytopia Mod — Alpha 0.4.9
 
 An alpha-stage, multiplayer-aware PolyMod gameplay overhaul for The Battle of
 Polytopia. The mod is under active development, so features and compatibility
@@ -8,6 +8,12 @@ may change between Alpha releases.
 
 - Warriors use the normal game health value; the former 15 HP override has
   been removed from both JSON and runtime code.
+- Spiritualism gives every basic tribe **Grow Giant**. It builds a visible
+  **Giant Seed** for 20 stars on an empty owned field without changing the
+  field terrain. At the start of the owner's next turn, the seed becomes a
+  Giant and uses Polytopia's normal Giant-push rules if the tile is occupied.
+  Giant Seed uses a native serialized improvement slot so saves, replays, and
+  Integrated multiplayer all carry the same deterministic state.
 - Peace treaties can be offered without researching a technology.
 - Strategy now unlocks embassies, capital vision, and Gift Stars. Strategy
   embassies produce 1 star per level; Diplomacy doubles all current and future
@@ -54,12 +60,12 @@ after both players accept the Discord prompt.
 ## Multiplayer requirements
 
 - Every player must install the same release of this mod.
-- Start a new test match after installing Alpha 0.4.8.
+- Start a new test match after installing Alpha 0.4.9.
 - Keep `manifest.json`, `patch.json`, and `BetterBoPMod.dll` together
   in the installed mod folder.
 
-The BepInEx log writes `Applied Better BoP technology, diplomacy, embassy, Mind
-Bender, and Ai-Mo rules` when the gameplay rules are loaded.
+The BepInEx log writes `Applied Better BoP technology, Grow Giant, diplomacy,
+embassy, Mind Bender, and Ai-Mo rules` when the gameplay rules are loaded.
 
 ## Install for development
 
