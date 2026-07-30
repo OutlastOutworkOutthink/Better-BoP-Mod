@@ -19,7 +19,7 @@ namespace BetterBoPMod;
 internal static class DiscordIntegrationPatch
 {
     internal const string ApiBaseUrl = "https://polyeconomic-bot-production.up.railway.app";
-    internal const string ModVersion = "0.4.7";
+    internal const string ModVersion = "0.4.8";
     internal const string IntegrationTokenKey = "polyeconomic.integration.token";
     internal const string LinkedAccountIdKey = "polyeconomic.integration.account_id";
     private static readonly HttpClient HttpClient = new()
