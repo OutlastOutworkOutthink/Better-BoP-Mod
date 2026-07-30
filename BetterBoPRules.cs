@@ -80,15 +80,36 @@ internal static class BetterBoPParsedRulesPatch
     }
 }
 
-[HarmonyPatch(typeof(PlayerDiplomacyExtensions), nameof(PlayerDiplomacyExtensions.GetIncomeFromEmbassy))]
+[HarmonyPatch(typeof(StartTurnAction), nameof(StartTurnAction.ExecuteDefault))]
 internal static class DiplomacyEmbassyIncomePatch
 {
     [HarmonyPostfix]
-    private static void DoubleDiplomacyEmbassyIncome(PlayerState playerState, GameState gameState, ref int __result)
+    private static void DoubleDiplomacyEmbassyIncome(GameState gameState)
     {
-        if (__result > 0 && gameState.GameLogicData.IsUnlocked(TechData.Type.Diplomacy, playerState))
+        try
         {
-            __result *= 2;
+            if (!gameState.TryGetPlayer(gameState.CurrentPlayer, out PlayerState player)) return;
+            if (!gameState.GameLogicData.IsUnlocked(TechData.Type.Diplomacy, player)) return;
+
+            int additionalIncome = 0;
+            foreach (var relation in player.relations)
+            {
+                additionalIncome += Math.Max(0, relation.Value.EmbassyLevel);
+            }
+            if (additionalIncome <= 0) return;
+
+            player.Currency += additionalIncome;
+            ResourceEvents.ResourceAdded(
+                player.Id,
+                ResourceManager.Type.Currency,
+                additionalIncome,
+                player.Currency
+            );
+            ResourceEvents.RefreshWallets(player.Id);
+        }
+        catch (Exception exception)
+        {
+            BetterBoPRules.Logger.LogError($"Could not apply doubled Diplomacy embassy income: {exception}");
         }
     }
 }
@@ -182,24 +203,30 @@ internal static class BetterBoPTechPopupPatch
     private static void AddBetterBoPTechInformation(TechData data, UIBasicComponent __result)
     {
         if (__result == null) return;
-
-        if (data.type == TechData.Type.Shields)
+        try
         {
-            AddInfo(
-                __result.rectTransform,
-                SpriteRef.UI_STARICON,
-                "Gift Stars",
-                "Choose another tribe and send 5, 10, or 20 stars. The receiving tribe gets 80% of the amount sent. Star gifts to bots create the Generous boon."
-            );
+            if (data.type == TechData.Type.Shields)
+            {
+                AddInfo(
+                    __result.rectTransform,
+                    SpriteRef.UI_STARICON,
+                    "Gift Stars",
+                    "Choose another tribe and send 5, 10, or 20 stars. The receiving tribe gets 80% of the amount sent. Star gifts to bots create the Generous boon."
+                );
+            }
+            else if (data.type == TechData.Type.Diplomacy)
+            {
+                AddInfo(
+                    __result.rectTransform,
+                    SpriteRef.UI_EMBASSY,
+                    "Embassy Income Doubled",
+                    "Researching Diplomacy doubles all current and future embassy income. Embassies give both tribes 2 stars per turn, or 4 stars per turn while they have a peace treaty."
+                );
+            }
         }
-        else if (data.type == TechData.Type.Diplomacy)
+        catch (Exception exception)
         {
-            AddInfo(
-                __result.rectTransform,
-                SpriteRef.UI_EMBASSY,
-                "Embassy Income Doubled",
-                "All current and future embassies give both tribes 2 stars per turn, or 4 stars per turn while they have a peace treaty."
-            );
+            BetterBoPRules.Logger.LogError($"Could not add Better BoP tech-panel icon for {data.type}: {exception}");
         }
     }
 
@@ -213,6 +240,23 @@ internal static class BetterBoPTechPopupPatch
         TechPopupContent.AddInfoPopup(button, header, description);
         button.UpdateLabelVisibility();
         button.RunLayout();
+    }
+}
+
+[HarmonyPatch(typeof(TechUtils), nameof(TechUtils.GetInfo))]
+internal static class BetterBoPTechInfoTextPatch
+{
+    [HarmonyPostfix]
+    private static void AddRuleText(TechData __0, ref string __result)
+    {
+        string addition = __0.type switch
+        {
+            TechData.Type.Shields => "Gift Stars: select another tribe to send 5, 10, or 20 stars. The receiving tribe gets 80%.",
+            TechData.Type.Diplomacy => "Embassy Income Doubled: all current and future embassies give 2 stars per turn, or 4 during peace.",
+            _ => string.Empty,
+        };
+        if (string.IsNullOrEmpty(addition) || (__result?.Contains(addition, StringComparison.Ordinal) ?? false)) return;
+        __result = string.IsNullOrWhiteSpace(__result) ? addition : $"{__result}\n\n{addition}";
     }
 }
 

@@ -1,4 +1,4 @@
-# Better Battle of Polytopia Mod 0.4.2
+# Better Battle of Polytopia Mod 0.4.3
 
 A multiplayer-aware PolyMod gameplay overhaul for The Battle of Polytopia.
 
@@ -35,7 +35,7 @@ after both players accept the Discord prompt.
 ## Multiplayer requirements
 
 - Every player must install the same release of this mod.
-- Start a new test match after installing version 0.4.2.
+- Start a new test match after installing version 0.4.3.
 - Keep `manifest.json`, `patch.json`, and `BetterBoPMod.dll` together
   in the installed mod folder.
 

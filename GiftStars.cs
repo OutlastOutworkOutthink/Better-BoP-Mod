@@ -262,8 +262,6 @@ internal static class GiftStarsButtonPatch
                 __instance.actionButtonContainer
             );
             button.gameObject.SetActive(true);
-            UnityEngine.Sprite star = GameManager.GetSpriteAtlasManager().GetSprite(SpriteRef.UI_STARICON);
-            button.SetSprite(star, false);
             button.SetText("Gift Stars");
             button.buttonActive = state.CurrentPlayer == local.Id;
             button.buttonExpensive = false;
@@ -271,6 +269,18 @@ internal static class GiftStarsButtonPatch
                 DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() => GiftStars.ShowAmountPicker(player))
             );
             __instance.actionButtons.Add(button);
+
+            try
+            {
+                UnityEngine.Sprite star = GameManager.GetSpriteAtlasManager().GetSprite(SpriteRef.UI_STARICON);
+                if (star != null) button.SetSprite(star, false);
+                else button.SetSprite(__instance.embassyIncome.icon.sprite, false);
+            }
+            catch (Exception iconException)
+            {
+                button.SetSprite(__instance.embassyIncome.icon.sprite, false);
+                BetterBoPRules.Logger.LogWarning($"Gift Stars icon fallback used: {iconException.Message}");
+            }
         }
         catch (Exception exception)
         {
@@ -358,7 +368,14 @@ internal static class EmbassyIncomeDisplayPatch
         PlayerState local = GameManager.LocalPlayer;
         GameState state = GameManager.GameState;
         if (viewed == null || local == null || __instance.embassyIncome == null) return;
-        __instance.embassyInfoText.text = "Embassy income: 1 star per turn, or 2 during peace. Diplomacy doubles those amounts to 2 and 4 stars per turn.";
-        __instance.embassyIncome.Amount = PlayerDiplomacyExtensions.GetIncomeFromEmbassy(local, viewed, state);
+        bool hasDiplomacy = state.GameLogicData.IsUnlocked(TechData.Type.Diplomacy, local);
+        __instance.embassyInfoText.text = hasDiplomacy
+            ? "Diplomacy doubles embassy income: 2 stars per turn, or 4 during peace. This applies to all current and future embassies."
+            : "Embassy income: 1 star per turn, or 2 during peace. Research Diplomacy to double all current and future embassy income.";
+        if (local.relations.TryGetValue(viewed.Id, out DiplomacyRelation relation))
+        {
+            int multiplier = hasDiplomacy ? 2 : 1;
+            __instance.embassyIncome.Amount = Math.Max(0, relation.EmbassyLevel) * multiplier;
+        }
     }
 }
