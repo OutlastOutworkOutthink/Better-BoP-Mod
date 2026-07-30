@@ -18,7 +18,7 @@ namespace BetterBoPMod;
 internal static class DiscordIntegrationPatch
 {
     internal const string ApiBaseUrl = "https://polyeconomic-bot-production.up.railway.app";
-    internal const string ModVersion = "0.4.2";
+    internal const string ModVersion = "0.4.3";
     internal const string IntegrationTokenKey = "polyeconomic.integration.token";
     internal const string LinkedAccountIdKey = "polyeconomic.integration.account_id";
     private static readonly HttpClient HttpClient = new()
@@ -49,23 +49,28 @@ internal static class DiscordIntegrationPatch
             }
 
             linkButton = UILibrary.NewRoundButton(__instance.rectTransform)
-                .SetStyle(UIButtonBase_UI2.ButtonStyle.Suggested)
-                .SetSprite(SpriteRef.UI_DISCORD, 0.55f);
+                .SetStyle(UIButtonBase_UI2.ButtonStyle.Suggested);
             linkButton.iconContainer.gameObject.SetActive(true);
-            linkButton.icon.gameObject.SetActive(true);
-            linkButton.icon.raycastTarget = false;
-            linkButton.titleTextField.textField.raycastTarget = false;
             linkButton.titleTextField.textField.fontSize = 18f;
             linkButton.SetButtonSize(UIRoundButton_UI2.ButtonSize.ExtraLarge);
-            linkButton.SetSize(280f, 92f);
-            linkButton.BG.raycastTarget = true;
-            linkButton.ButtonEnabled = true;
-            linkButton.blockClick = false;
+            linkButton.SetSize(300f, 96f);
             linkButton.OnClickedSignal.Clear();
             linkButton.OnClickedSignal.Add(
                 DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(BeginDiscordLink)
             );
             UpdateButtonForCurrentAccount();
+            try
+            {
+                linkButton.SetSprite(SpriteRef.UI_DISCORD, 0.5f);
+                linkButton.icon.gameObject.SetActive(true);
+            }
+            catch (Exception iconException)
+            {
+                // A text Link Discord button is still fully usable if a game
+                // build cannot resolve the Discord sprite.
+                linkButton.icon.gameObject.SetActive(false);
+                logger.LogWarning($"Discord icon unavailable; keeping text button: {iconException.Message}");
+            }
             PositionButton(__instance);
             linkButton.UpdateLabelVisibility();
             linkButton.RunLayout();

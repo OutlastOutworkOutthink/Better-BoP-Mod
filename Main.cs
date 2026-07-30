@@ -27,29 +27,47 @@ public static class Main
         GiftStars.Initialize(logger);
         DiscordIntegrationPatch.Initialize(logger);
         IntegratedMultiplayer.Initialize(logger);
-        Harmony.CreateAndPatchAll(typeof(BetterBoPParsedRulesPatch));
-        Harmony.CreateAndPatchAll(typeof(DiplomacyEmbassyIncomePatch));
-        Harmony.CreateAndPatchAll(typeof(AlwaysAvailablePeacePatch));
-        Harmony.CreateAndPatchAll(typeof(AlwaysAvailablePeaceHasAbilityPatch));
-        Harmony.CreateAndPatchAll(typeof(DiplomacyActionButtonRulesPatch));
-        Harmony.CreateAndPatchAll(typeof(EmbassyDescriptionPatch));
-        Harmony.CreateAndPatchAll(typeof(BetterBoPTechPopupPatch));
-        Harmony.CreateAndPatchAll(typeof(AimoDescriptionPatch));
-        Harmony.CreateAndPatchAll(typeof(GiftStarsButtonPatch));
-        Harmony.CreateAndPatchAll(typeof(GenerousOpinionPatch));
-        Harmony.CreateAndPatchAll(typeof(GenerousReasonLabelPatch));
-        Harmony.CreateAndPatchAll(typeof(GenerousReasonButtonPatch));
-        Harmony.CreateAndPatchAll(typeof(EmbassyIncomeDisplayPatch));
-        Harmony.CreateAndPatchAll(typeof(HideLobbyInvitePatch));
-        Harmony.CreateAndPatchAll(typeof(BlockLobbyInvitePatch));
-        Harmony.CreateAndPatchAll(typeof(BlockManualMultiplayerGamePatch));
-        Harmony.CreateAndPatchAll(typeof(BlockRandomMatchPatch));
-        Harmony.CreateAndPatchAll(typeof(RedRandomMatchButtonPatch));
-        Harmony.CreateAndPatchAll(typeof(OnlineGameStatePatch));
-        Harmony.CreateAndPatchAll(typeof(DiscordIntegrationPatch));
-        Harmony.CreateAndPatchAll(typeof(IntegratedCommandPatch));
-        Harmony.CreateAndPatchAll(typeof(IntegratedResultPatch));
+        // UI entry points are registered first. Every patch is isolated so an
+        // incompatible gameplay hook can never make Link Discord or Gift Stars
+        // disappear again.
+        SafePatch(typeof(DiscordIntegrationPatch), logger);
+        SafePatch(typeof(GiftStarsButtonPatch), logger);
+        SafePatch(typeof(EmbassyIncomeDisplayPatch), logger);
+        SafePatch(typeof(BetterBoPTechPopupPatch), logger);
+        SafePatch(typeof(BetterBoPTechInfoTextPatch), logger);
+
+        SafePatch(typeof(BetterBoPParsedRulesPatch), logger);
+        SafePatch(typeof(DiplomacyEmbassyIncomePatch), logger);
+        SafePatch(typeof(AlwaysAvailablePeacePatch), logger);
+        SafePatch(typeof(AlwaysAvailablePeaceHasAbilityPatch), logger);
+        SafePatch(typeof(DiplomacyActionButtonRulesPatch), logger);
+        SafePatch(typeof(EmbassyDescriptionPatch), logger);
+        SafePatch(typeof(AimoDescriptionPatch), logger);
+        SafePatch(typeof(GenerousOpinionPatch), logger);
+        SafePatch(typeof(GenerousReasonLabelPatch), logger);
+        SafePatch(typeof(GenerousReasonButtonPatch), logger);
+        SafePatch(typeof(HideLobbyInvitePatch), logger);
+        SafePatch(typeof(BlockLobbyInvitePatch), logger);
+        SafePatch(typeof(BlockManualMultiplayerGamePatch), logger);
+        SafePatch(typeof(BlockRandomMatchPatch), logger);
+        SafePatch(typeof(RedRandomMatchButtonPatch), logger);
+        SafePatch(typeof(OnlineGameStatePatch), logger);
+        SafePatch(typeof(IntegratedCommandPatch), logger);
+        SafePatch(typeof(IntegratedResultPatch), logger);
         logger.LogMessage("Better Battle of Polytopia Mod multiplayer and Discord integration hooks loaded.");
+    }
+
+    private static void SafePatch(Type patchType, ManualLogSource logger)
+    {
+        try
+        {
+            Harmony.CreateAndPatchAll(patchType);
+            logger.LogInfo($"Loaded Better BoP patch: {patchType.Name}");
+        }
+        catch (Exception exception)
+        {
+            logger.LogError($"Could not load Better BoP patch {patchType.Name}: {exception}");
+        }
     }
 }
 
