@@ -7,10 +7,10 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using UnityEngine;
 
-namespace PolyEconomicMod;
+namespace BetterBoPMod;
 
 /// <summary>
-/// Adds the PolyEconomic account-link action to the player's profile. The game
+/// Adds the league account-link action to the player's profile. The game
 /// supplies its already-authenticated Polytopia identity; Discord authentication
 /// happens in the player's browser and no game or Steam password is collected.
 /// </summary>
@@ -187,7 +187,7 @@ internal static class DiscordIntegrationPatch
                     PlayerPrefs.SetString(LinkedAccountIdKey, accountId);
                     PlayerPrefs.Save();
                     SetButtonText("Discord Linked");
-                    logger.LogMessage($"Linked Polytopia account {accountId} for PolyEconomic multiplayer.");
+                    logger.LogMessage($"Linked Polytopia account {accountId} for Better Battle of Polytopia Mod multiplayer.");
                 }
                 else
                 {

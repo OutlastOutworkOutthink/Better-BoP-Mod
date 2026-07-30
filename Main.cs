@@ -5,11 +5,11 @@ using Polytopia.Data;
 using PolytopiaBackendBase.Game;
 using System.Reflection;
 
-namespace PolyEconomicMod;
+namespace BetterBoPMod;
 
 /// <summary>
-/// Loads the runtime patches needed to keep PolyEconomic rules active when
-/// Polytopia loads fresh game-logic data for an online match.
+/// Loads the runtime patches needed to keep Better Battle of Polytopia rules
+/// active when Polytopia loads fresh game-logic data for an online match.
 /// </summary>
 public static class Main
 {
@@ -29,7 +29,7 @@ public static class Main
         Harmony.CreateAndPatchAll(typeof(GameLogicDataPatch));
         Harmony.CreateAndPatchAll(typeof(OnlineGameStatePatch));
         Harmony.CreateAndPatchAll(typeof(DiscordIntegrationPatch));
-        logger.LogMessage("PolyEconomic multiplayer game-logic and Discord integration hooks loaded.");
+        logger.LogMessage("Better Battle of Polytopia Mod multiplayer and Discord integration hooks loaded.");
     }
 }
 
@@ -95,7 +95,7 @@ internal static class GameLogicDataPatch
     internal static ManualLogSource Logger { get; set; } = null!;
 
     [HarmonyPrefix]
-    private static void ApplyPolyEconomicRules(ref JObject rootObject)
+    private static void ApplyBetterBoPRules(ref JObject rootObject)
     {
         try
         {

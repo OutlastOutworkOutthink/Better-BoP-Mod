@@ -3,8 +3,8 @@
     <TargetFramework>net6.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>PolyEconomicMultiplayer</AssemblyName>
-    <RootNamespace>PolyEconomicMod</RootNamespace>
+    <AssemblyName>BetterBoPMod</AssemblyName>
+    <RootNamespace>BetterBoPMod</RootNamespace>
     <RestoreAdditionalProjectSources>
       https://api.nuget.org/v3/index.json;
       https://nuget.bepinex.dev/v3/index.json;

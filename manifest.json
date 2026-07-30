@@ -1,7 +1,7 @@
 {
-  "id": "polyeconomic_balance",
-  "name": "PolyEconomic Balance",
-  "description": "PolyEconomic rules, multiplayer game logic, and Discord account integration.",
+  "id": "better_bop_mod",
+  "name": "Better Battle of Polytopia Mod",
+  "description": "A broad gameplay overhaul with multiplayer-aware rules and Discord integration.",
   "version": "0.3.0",
   "authors": [
     "OutlastOutworkOutthink"
