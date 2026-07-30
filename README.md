@@ -4,7 +4,8 @@ A PolyMod data mod for The Battle of Polytopia.
 
 ## Current changes
 
-- Regular Warrior maximum health increased to 15 HP.
+- Regular Warrior maximum health increased to 15 HP (`150` in the game's
+  internal stat scale).
 
 ## Install for development
 
