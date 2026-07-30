@@ -17,10 +17,10 @@ namespace BetterBoPMod;
 [HarmonyPatch]
 internal static class DiscordIntegrationPatch
 {
-    private const string ApiBaseUrl = "https://polyeconomic-bot-production.up.railway.app";
-    private const string ModVersion = "0.3.0";
-    private const string IntegrationTokenKey = "polyeconomic.integration.token";
-    private const string LinkedAccountIdKey = "polyeconomic.integration.account_id";
+    internal const string ApiBaseUrl = "https://polyeconomic-bot-production.up.railway.app";
+    internal const string ModVersion = "0.4.0";
+    internal const string IntegrationTokenKey = "polyeconomic.integration.token";
+    internal const string LinkedAccountIdKey = "polyeconomic.integration.account_id";
     private static readonly HttpClient HttpClient = new()
     {
         Timeout = TimeSpan.FromSeconds(20),
@@ -98,7 +98,7 @@ internal static class DiscordIntegrationPatch
         string currentAccountId = AccountManager.PlayerAccountId.ToString();
         string linkedAccountId = PlayerPrefs.GetString(LinkedAccountIdKey, string.Empty);
         linkButton.Text = !string.IsNullOrWhiteSpace(linkedAccountId) && linkedAccountId == currentAccountId
-            ? "Discord Linked"
+            ? "Check Games"
             : "Link Discord";
     }
 
@@ -112,6 +112,13 @@ internal static class DiscordIntegrationPatch
         try
         {
             string accountId = AccountManager.PlayerAccountId.ToString();
+            string linkedAccountId = PlayerPrefs.GetString(LinkedAccountIdKey, string.Empty);
+            if (!string.IsNullOrWhiteSpace(linkedAccountId) && linkedAccountId == accountId)
+            {
+                SetButtonText("Checking...");
+                _ = IntegratedMultiplayer.CheckForAssignedGameAsync(true);
+                return;
+            }
             string displayName = AccountManager.Alias?.Trim() ?? string.Empty;
             string friendCode = AccountManager.UserModel?.FriendCode?.Trim() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(accountId) ||
@@ -186,7 +193,8 @@ internal static class DiscordIntegrationPatch
                     PlayerPrefs.SetString(IntegrationTokenKey, linkSession.IntegrationToken);
                     PlayerPrefs.SetString(LinkedAccountIdKey, accountId);
                     PlayerPrefs.Save();
-                    SetButtonText("Discord Linked");
+                    SetButtonText("Check Games");
+                    IntegratedMultiplayer.Wake();
                     logger.LogMessage($"Linked Polytopia account {accountId} for Better Battle of Polytopia Mod multiplayer.");
                 }
                 else
@@ -233,7 +241,7 @@ internal static class DiscordIntegrationPatch
         return false;
     }
 
-    private static void RunOnMainThread(Action action)
+    internal static void RunOnMainThread(Action action)
     {
         if (mainThread == null || SynchronizationContext.Current == mainThread)
         {
@@ -244,7 +252,7 @@ internal static class DiscordIntegrationPatch
         mainThread.Post(_ => action(), null);
     }
 
-    private static void SetButtonText(string text)
+    internal static void SetButtonText(string text)
     {
         if (linkButton != null)
         {
