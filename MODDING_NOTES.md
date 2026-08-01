@@ -34,6 +34,17 @@ the reference assemblies, not that the patched screen executed correctly.
   `-200` for a bot observing the local human and exactly `+200` for a bot
   observing another bot. Apply this at last priority so difficulty and normal
   boons cannot override it.
+- A null `PlayerState.AccountId` does not prove a player is a bot: offline local
+  humans can also have no account ID. Check `GameManager.IsPlayerLocal(id)`
+  first, then use `AutoPlay`/account state only for non-local players.
+- The AI can consume the cached native `OpinionState.total`, not only the
+  managed `GetOpinion` return. Enforce Oblivion totals after opinion refreshes
+  and immediately before `AI.GetMove`; patch `AI.ShouldAcceptPeace` separately.
+- Without Diplomacy, `PlayerInfoPopup.Refresh` does not call
+  `GetLocalizedTopReasons`, so a label postfix alone cannot display reason
+  pills. For Oblivion, hide only the locked-info panel and call the popup's
+  native `SwapButtons` with the rebuilt three-reason dictionary. Do not fake
+  tech ownership.
 - If only the rendered list can be expanded, intercept selection of its fourth
   `Oblivion` entry before vanilla handles it. Vanilla's model may still contain
   only three items and would otherwise index past the end.
