@@ -1,7 +1,8 @@
-# Archived features — inactive in Alpha 0.5.6
+# Archived features — inactive in Alpha 0.5.7
 
-Alpha 0.5.6 keeps the reset baseline. Only `Main.cs`, `OblivionMode.cs`, and
-`OblivionOpinions.cs` are compiled as mod behavior.
+Alpha 0.5.7 keeps the reset gameplay baseline. Only `Main.cs`,
+`OblivionMode.cs`, `OblivionOpinions.cs`, and the isolated
+`DiscordAccountLink.cs` are compiled as mod behavior.
 
 The following source files are preserved as notes/history but explicitly
 excluded in `BetterBoPMod.csproj`, so they cannot patch or change the game:
@@ -12,7 +13,7 @@ excluded in `BetterBoPMod.csproj`, so they cannot patch or change the game:
 | `GiftStars.cs` | star gifting and generous relation behavior |
 | `GrowGiant.cs` | Giant Seed and Grow Giant |
 | `TribeRelations.cs` | respected, hated, dominating, generous, old Oblivion code |
-| `DiscordIntegration.cs` | in-game Discord account-link UI |
+| `DiscordIntegration.cs` | superseded account-link UI plus multiplayer coupling |
 | `IntegratedMultiplayer.cs` | server-created game integration |
 | `MultiplayerRestrictions.cs` | friend/random/manual multiplayer restrictions |
 
