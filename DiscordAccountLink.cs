@@ -18,7 +18,7 @@ namespace BetterBoPMod;
 internal static class DiscordAccountLink
 {
     internal const string ApiBaseUrl = "https://polyeconomic-bot-production.up.railway.app";
-    // Alpha 0.5.15/0.5.16 change only client UI timing. They deliberately speak the
+    // Alpha 0.5.15-0.5.18 change only client UI/integration recovery. They speak the
     // unchanged 0.5.14 multiplayer ruleset/protocol to the live server.
     internal const string ModVersion = "0.5.14";
     internal const string IntegrationTokenKey = "polyeconomic.integration.token";
@@ -210,7 +210,19 @@ internal static class DiscordAccountLink
     {
         string currentAccountId = AccountManager.PlayerAccountId.ToString();
         string linkedAccountId = PlayerPrefs.GetString(LinkedAccountIdKey, string.Empty);
-        return !string.IsNullOrWhiteSpace(linkedAccountId) && linkedAccountId == currentAccountId;
+        string integrationToken = PlayerPrefs.GetString(IntegrationTokenKey, string.Empty);
+        return !string.IsNullOrWhiteSpace(integrationToken) &&
+               !string.IsNullOrWhiteSpace(linkedAccountId) &&
+               linkedAccountId == currentAccountId;
+    }
+
+    internal static void ShowConnectionPrompt(bool reconnect, string detail)
+    {
+        string title = reconnect ? "Reconnect Discord" : "Connect Discord";
+        string instruction = reconnect
+            ? "Open Profile and press Connect Discord to safely restore this account's connection."
+            : "Open Profile and press Connect Discord before using Modded multiplayer.";
+        ShowPopup(title, $"{detail} {instruction}");
     }
 
     private static void TakeClickOwnership()
