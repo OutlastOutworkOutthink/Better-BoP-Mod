@@ -1,6 +1,6 @@
-# Archived features — inactive in Alpha 0.5.5
+# Archived features — inactive in Alpha 0.5.6
 
-Alpha 0.5.5 keeps the reset baseline. Only `Main.cs`, `OblivionMode.cs`, and
+Alpha 0.5.6 keeps the reset baseline. Only `Main.cs`, `OblivionMode.cs`, and
 `OblivionOpinions.cs` are compiled as mod behavior.
 
 The following source files are preserved as notes/history but explicitly
@@ -24,8 +24,11 @@ test before the next feature is enabled.
 
 - Menu location: Creative rule selector, beside Perfection/Domination/Infinity.
 - Game rules: `BaseGameMode = Custom`, `RulesGameMode = Domination`.
-- Bot observing bot: native opinion plus 200, never below the love threshold.
-- Bot observing local player: native opinion minus 200, never above the hate
-  threshold.
+- Bot observing bot: exact stored and returned opinion of +200.
+- Bot observing local player: exact stored and returned opinion of -200.
+- Local identity is checked before the null-account bot heuristic.
+- AI peace responses, diplomacy command choices, and pre-move stored opinions
+  follow the same invariant.
+- Oblivion always exposes three relation reasons without unlocking Diplomacy.
 - Human opinions are not modified.
 - Existing non-Oblivion saves are not modified.
