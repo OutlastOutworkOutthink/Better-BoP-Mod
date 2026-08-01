@@ -15,11 +15,10 @@ namespace BetterBoPMod;
 /// it in the player's browser, and remember the completed account link. This
 /// file deliberately contains no multiplayer or gameplay patches.
 /// </summary>
-[HarmonyPatch]
 internal static class DiscordAccountLink
 {
     internal const string ApiBaseUrl = "https://polyeconomic-bot-production.up.railway.app";
-    internal const string ModVersion = "0.5.7";
+    internal const string ModVersion = "0.5.8";
     internal const string IntegrationTokenKey = "polyeconomic.integration.token";
     internal const string LinkedAccountIdKey = "polyeconomic.integration.account_id";
 
@@ -33,6 +32,7 @@ internal static class DiscordAccountLink
     private static ProfileScreen? owner;
     private static UIRoundButton_UI2? linkButton;
     private static bool requestInFlight;
+    private static bool applyingVisuals;
 
     internal static void Initialize(ManualLogSource logSource)
     {
@@ -40,70 +40,33 @@ internal static class DiscordAccountLink
         mainThread = SynchronizationContext.Current;
     }
 
-    // ProfileScreen is rebuilt and refreshed through several separate paths.
-    // Reasserting the button from all of them prevents the control from going
-    // missing after returning from another screen, refreshing the account,
-    // changing language, or receiving a late backend profile update.
-    [HarmonyPostfix]
-    [HarmonyPatch(typeof(ProfileScreen), nameof(ProfileScreen.Start))]
-    private static void ProfileScreen_Start(ProfileScreen __instance) =>
-        EnsureButton(__instance, "Start");
-
-    [HarmonyPostfix]
-    [HarmonyPatch(typeof(ProfileScreen), nameof(ProfileScreen.OnEnable))]
-    private static void ProfileScreen_OnEnable(ProfileScreen __instance) =>
-        EnsureButton(__instance, "OnEnable");
-
-    [HarmonyPostfix]
-    [HarmonyPatch(typeof(ProfileScreen), nameof(ProfileScreen.UpdateValues))]
-    private static void ProfileScreen_UpdateValues(ProfileScreen __instance) =>
-        EnsureButton(__instance, "UpdateValues");
-
-    [HarmonyPostfix]
-    [HarmonyPatch(typeof(ProfileScreen), nameof(ProfileScreen.OnScreenUpdated))]
-    private static void ProfileScreen_OnScreenUpdated(ProfileScreen __instance) =>
-        EnsureButton(__instance, "OnScreenUpdated");
-
-    [HarmonyPostfix]
-    [HarmonyPatch(typeof(ProfileScreen), nameof(ProfileScreen.OnRefreshUser))]
-    private static void ProfileScreen_OnRefreshUser(ProfileScreen __instance) =>
-        EnsureButton(__instance, "OnRefreshUser");
-
-    [HarmonyPostfix]
-    [HarmonyPatch(typeof(ProfileScreen), nameof(ProfileScreen.OnLanguageChanged))]
-    private static void ProfileScreen_OnLanguageChanged(ProfileScreen __instance) =>
-        EnsureButton(__instance, "OnLanguageChanged");
-
-    [HarmonyPrefix]
-    [HarmonyPatch(typeof(UIRoundButton_UI2), nameof(UIRoundButton_UI2.OnPointerClick))]
-    private static bool InterceptPointerClick(UIRoundButton_UI2 __instance)
+    internal static bool InterceptPointerClick(UIRoundButton_UI2 instance)
     {
-        if (!IsLinkButton(__instance)) return true;
+        if (!IsLinkButton(instance)) return true;
 
         logger.LogMessage("Connect Discord pointer click intercepted by Better BoP.");
         BeginDiscordLink();
         return false;
     }
 
-    [HarmonyPrefix]
-    [HarmonyPatch(typeof(UIButtonBase_UI2), nameof(UIButtonBase_UI2.OnButtonClicked))]
-    private static bool InterceptControllerClick(UIButtonBase_UI2 __instance)
+    internal static bool InterceptControllerClick(UIButtonBase_UI2 instance)
     {
-        if (!IsLinkButton(__instance)) return true;
+        if (!IsLinkButton(instance)) return true;
 
         logger.LogMessage("Connect Discord controller/keyboard click intercepted by Better BoP.");
         BeginDiscordLink();
         return false;
     }
 
-    private static bool IsLinkButton(UIButtonBase_UI2 candidate) =>
+    internal static bool IsLinkButton(UIButtonBase_UI2 candidate) =>
         linkButton != null && candidate.Pointer == linkButton.Pointer;
 
-    private static void EnsureButton(ProfileScreen profile, string lifecycle)
+    internal static void EnsureButton(ProfileScreen profile, string lifecycle)
     {
         try
         {
             mainThread ??= SynchronizationContext.Current;
+            owner = profile;
 
             if (!ButtonBelongsTo(profile))
             {
@@ -111,10 +74,10 @@ internal static class DiscordAccountLink
                 owner = profile;
                 linkButton = UILibrary.NewRoundButton(profile.rectTransform)
                     .SetStyle(UIButtonBase_UI2.ButtonStyle.Delete)
-                    .SetButtonSize(UIRoundButton_UI2.ButtonSize.Regular);
+                    .SetButtonSize(UIRoundButton_UI2.ButtonSize.ExtraLarge);
                 linkButton.gameObject.name = "BetterBoP_ConnectDiscord";
                 linkButton.gameObject.SetActive(true);
-                logger.LogInfo($"Created red Connect Discord profile button during {lifecycle}.");
+                logger.LogInfo($"Created top-right Connect Discord profile button during {lifecycle}.");
             }
 
             ConfigureButton(profile);
@@ -124,6 +87,32 @@ internal static class DiscordAccountLink
             // A later lifecycle callback will retry. Do not let an optional
             // account-link control interrupt the stock profile screen.
             logger.LogWarning($"Connect Discord button retry needed after {lifecycle}: {exception.Message}");
+        }
+    }
+
+    internal static void RetryOwnedButton(string lifecycle)
+    {
+        try
+        {
+            if (owner != null) EnsureButton(owner, lifecycle);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning($"Connect Discord owned-button retry failed after {lifecycle}: {exception.Message}");
+        }
+    }
+
+    internal static void ReassertAfterRoundButtonLayout(UIRoundButton_UI2 button)
+    {
+        if (!IsLinkButton(button)) return;
+
+        try
+        {
+            ApplyPersistentVisuals();
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning($"Could not reassert Connect Discord layout: {exception.Message}");
         }
     }
 
@@ -166,33 +155,63 @@ internal static class DiscordAccountLink
         if (linkButton == null) return;
 
         TakeClickOwnership();
-        linkButton.SetStyle(UIButtonBase_UI2.ButtonStyle.Delete);
-        linkButton.SetButtonSize(UIRoundButton_UI2.ButtonSize.Regular);
         linkButton.Text = CurrentButtonText();
         linkButton.UpdateLabelVisibility();
         linkButton.RunLayout();
+        ApplyPersistentVisuals();
+    }
 
-        // Keep the stock round geometry. The Delete style is Polytopia's red
-        // button style; placing it beside the back control makes it visible in
-        // the top-left without covering the profile information.
-        RectTransform transform = linkButton.rectTransform;
-        transform.anchorMin = new Vector2(0f, 1f);
-        transform.anchorMax = new Vector2(0f, 1f);
-        transform.pivot = new Vector2(0f, 1f);
-        transform.anchoredPosition = new Vector2(132f, -42f);
-        transform.SetAsLastSibling();
-        linkButton.gameObject.SetActive(profile.gameObject.activeInHierarchy);
+    private static void ApplyPersistentVisuals()
+    {
+        if (linkButton == null || applyingVisuals) return;
+
+        applyingVisuals = true;
+        try
+        {
+            linkButton.SetStyle(IsCurrentAccountLinked()
+                ? UIButtonBase_UI2.ButtonStyle.Complete
+                : UIButtonBase_UI2.ButtonStyle.Delete);
+            linkButton.SetButtonSize(UIRoundButton_UI2.ButtonSize.ExtraLarge);
+
+            // Keep Polytopia's stock circular geometry and reassert the
+            // top-right position after every native layout pass.
+            RectTransform transform = linkButton.rectTransform;
+            transform.anchorMin = Vector2.one;
+            transform.anchorMax = Vector2.one;
+            transform.pivot = Vector2.one;
+            transform.anchoredPosition = new Vector2(-48f, -48f);
+            transform.localScale = Vector3.one;
+            transform.localRotation = Quaternion.identity;
+            transform.SetAsLastSibling();
+            linkButton.gameObject.SetActive(true);
+
+            if (linkButton.bg != null)
+            {
+                linkButton.bg.gameObject.SetActive(true);
+                linkButton.bg.raycastTarget = true;
+            }
+            if (linkButton.outline != null) linkButton.outline.gameObject.SetActive(true);
+        }
+        finally
+        {
+            applyingVisuals = false;
+        }
     }
 
     private static string CurrentButtonText()
     {
         if (requestInFlight) return "Connecting...";
 
-        string currentAccountId = AccountManager.PlayerAccountId.ToString();
-        string linkedAccountId = PlayerPrefs.GetString(LinkedAccountIdKey, string.Empty);
-        return !string.IsNullOrWhiteSpace(linkedAccountId) && linkedAccountId == currentAccountId
+        return IsCurrentAccountLinked()
             ? "Discord Connected"
             : "Connect Discord";
+    }
+
+    private static bool IsCurrentAccountLinked()
+    {
+        string currentAccountId = AccountManager.PlayerAccountId.ToString();
+        string linkedAccountId = PlayerPrefs.GetString(LinkedAccountIdKey, string.Empty);
+        return !string.IsNullOrWhiteSpace(linkedAccountId) && linkedAccountId == currentAccountId;
     }
 
     private static void TakeClickOwnership()
@@ -425,8 +444,7 @@ internal static class DiscordAccountLink
         linkButton.Text = text;
         linkButton.UpdateLabelVisibility();
         linkButton.RunLayout();
-        linkButton.SetStyle(UIButtonBase_UI2.ButtonStyle.Delete);
-        linkButton.SetButtonSize(UIRoundButton_UI2.ButtonSize.Regular);
+        ApplyPersistentVisuals();
     }
 
     private static void ShowPopup(string title, string message)
@@ -479,4 +497,110 @@ internal static class DiscordAccountLink
         [JsonPropertyName("expired")]
         public bool Expired { get; init; }
     }
+}
+
+// Every hook is independent. If a future Polytopia build changes one method,
+// the remaining recovery paths still create and maintain the link control.
+[HarmonyPatch(typeof(ProfileScreen), nameof(ProfileScreen.Start))]
+internal static class DiscordProfileStartPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(ProfileScreen __instance) =>
+        DiscordAccountLink.EnsureButton(__instance, "Start");
+}
+
+[HarmonyPatch(typeof(ProfileScreen), nameof(ProfileScreen.OnEnable))]
+internal static class DiscordProfileEnablePatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(ProfileScreen __instance) =>
+        DiscordAccountLink.EnsureButton(__instance, "OnEnable");
+}
+
+[HarmonyPatch(typeof(ProfileScreen), nameof(ProfileScreen.UpdateValues))]
+internal static class DiscordProfileValuesPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(ProfileScreen __instance) =>
+        DiscordAccountLink.EnsureButton(__instance, "UpdateValues");
+}
+
+[HarmonyPatch(typeof(ProfileScreen), nameof(ProfileScreen.OnScreenUpdated))]
+internal static class DiscordProfileScreenUpdatedPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(ProfileScreen __instance) =>
+        DiscordAccountLink.EnsureButton(__instance, "OnScreenUpdated");
+}
+
+[HarmonyPatch(typeof(ProfileScreen), nameof(ProfileScreen.OnRefreshUser))]
+internal static class DiscordProfileRefreshUserPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(ProfileScreen __instance) =>
+        DiscordAccountLink.EnsureButton(__instance, "OnRefreshUser");
+}
+
+[HarmonyPatch(typeof(ProfileScreen), nameof(ProfileScreen.OnLanguageChanged))]
+internal static class DiscordProfileLanguagePatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(ProfileScreen __instance) =>
+        DiscordAccountLink.EnsureButton(__instance, "OnLanguageChanged");
+}
+
+[HarmonyPatch(typeof(ProfileScreen), nameof(ProfileScreen.SubscribeButtonsEvents))]
+internal static class DiscordProfileSubscribePatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(ProfileScreen __instance) =>
+        DiscordAccountLink.EnsureButton(__instance, "SubscribeButtonsEvents");
+}
+
+[HarmonyPatch(typeof(ProfileScreen), nameof(ProfileScreen.OnRefresh))]
+internal static class DiscordProfileRefreshPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(ProfileScreen __instance) =>
+        DiscordAccountLink.EnsureButton(__instance, "OnRefresh");
+}
+
+[HarmonyPatch(typeof(UILibrary), nameof(UILibrary.loadComplete))]
+internal static class DiscordUILibraryReadyPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix() =>
+        DiscordAccountLink.RetryOwnedButton("UILibrary.loadComplete");
+}
+
+[HarmonyPatch(typeof(UIRoundButton_UI2), nameof(UIRoundButton_UI2.RunLayout))]
+internal static class DiscordRoundButtonLayoutPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(UIRoundButton_UI2 __instance) =>
+        DiscordAccountLink.ReassertAfterRoundButtonLayout(__instance);
+}
+
+[HarmonyPatch(typeof(UIRoundButton_UI2), nameof(UIRoundButton_UI2.OnEnable))]
+internal static class DiscordRoundButtonEnablePatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(UIRoundButton_UI2 __instance) =>
+        DiscordAccountLink.ReassertAfterRoundButtonLayout(__instance);
+}
+
+[HarmonyPatch(typeof(UIRoundButton_UI2), nameof(UIRoundButton_UI2.OnPointerClick))]
+internal static class DiscordPointerClickPatch
+{
+    [HarmonyPrefix]
+    private static bool Prefix(UIRoundButton_UI2 __instance) =>
+        DiscordAccountLink.InterceptPointerClick(__instance);
+}
+
+[HarmonyPatch(typeof(UIButtonBase_UI2), nameof(UIButtonBase_UI2.OnButtonClicked))]
+internal static class DiscordControllerClickPatch
+{
+    [HarmonyPrefix]
+    private static bool Prefix(UIButtonBase_UI2 __instance) =>
+        DiscordAccountLink.InterceptControllerClick(__instance);
 }

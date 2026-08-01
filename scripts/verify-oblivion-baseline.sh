@@ -29,7 +29,12 @@ for symbol in \
   OblivionAIMovePatch \
   OblivionAIPeacePatch \
   OblivionAIDiplomacyCommandPatch \
-  DiscordAccountLink
+  DiscordAccountLink \
+  DiscordProfileStartPatch \
+  DiscordProfileEnablePatch \
+  DiscordUILibraryReadyPatch \
+  DiscordRoundButtonLayoutPatch \
+  DiscordPointerClickPatch
 do
   strings "$dll" | grep -q "$symbol" || {
     echo "Release DLL is missing required symbol: $symbol" >&2
