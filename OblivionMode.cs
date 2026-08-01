@@ -49,7 +49,7 @@ internal static class OblivionMode
 
     internal static bool IsUI2Index(UIHorizontalListData data, int index)
     {
-        if (data == null || index < 0) return false;
+        if (data == null || data.labels == null || index < 0) return false;
         if (index < data.labels.Count &&
             string.Equals(data.labels[index], Label, StringComparison.OrdinalIgnoreCase))
             return true;
@@ -58,6 +58,14 @@ internal static class OblivionMode
         // that fallback supplied a fourth visual item before the model could be
         // expanded, index == Count still means the Oblivion choice.
         return index == data.labels.Count && IsCreativeRuleData(data);
+    }
+
+    internal static bool IsRenderedUI2Index(GameSetupScreen_UI2 screen, int index)
+    {
+        if (screen?.view?.listGameMode?.data == null || index < 0) return false;
+        Il2CppSystem.Collections.Generic.List<string> labels = screen.view.listGameMode.data;
+        return index < labels.Count &&
+               string.Equals(labels[index], Label, StringComparison.OrdinalIgnoreCase);
     }
 
     internal static bool IsCreativeRuleData(UIHorizontalListData data)
@@ -78,23 +86,15 @@ internal static class OblivionMode
         return perfection && domination && infinity;
     }
 
-    internal static bool LooksLikeCreativeRuleLabels(
+    internal static bool IsUnexpandedCreativeRuleRow(
         Il2CppSystem.Collections.Generic.List<string> labels
     )
     {
-        if (labels == null || labels.Count < 3) return false;
-        bool perfection = false;
-        bool domination = false;
-        bool infinity = false;
-        foreach (string label in labels)
-        {
-            if (string.IsNullOrWhiteSpace(label)) continue;
-            perfection |= label.Contains("perfection", StringComparison.OrdinalIgnoreCase);
-            domination |= label.Contains("domination", StringComparison.OrdinalIgnoreCase);
-            infinity |= label.Contains("infinity", StringComparison.OrdinalIgnoreCase) ||
-                        label.Contains("sandbox", StringComparison.OrdinalIgnoreCase);
-        }
-        return perfection && domination && infinity;
+        // This patch runs only at GameSetupScreenView.SetShowGameModes, so a
+        // three-item row is the vanilla Creative Perfection / Domination /
+        // Infinity row. Do not inspect the strings: this boundary may receive
+        // localization keys rather than rendered English labels.
+        return labels != null && labels.Count == 3;
     }
 
     internal static void ArmForNewGame()
@@ -223,25 +223,39 @@ internal static class OblivionCreativeModeListUI2Patch
     [HarmonyPostfix]
     private static void AddOblivion(GameSetupScreen_UI2 __instance)
     {
-        UIHorizontalListData data = __instance.gameModeData;
-        if (data == null || !data.HasData() || !OblivionMode.IsCreativeRuleData(data)) return;
-
-        for (int index = 0; index < data.labels.Count; index++)
+        try
         {
-            if (OblivionMode.IsUI2Index(data, index)) return;
+            UIHorizontalListData data = __instance.gameModeData;
+            // UIHorizontalListData.HasData() dereferences partially initialized
+            // IL2CPP fields during OnShow in Polytopia 122. Inspect only fields
+            // that have completed initialization instead.
+            if (data == null || !OblivionMode.IsCreativeRuleData(data)) return;
+
+            for (int index = 0; index < data.labels.Count; index++)
+            {
+                if (OblivionMode.IsUI2Index(data, index)) return;
+            }
+
+            data.AddItem(OblivionMode.Label, OblivionMode.ListId);
+            __instance.gameModeData = data;
+            int selectedIndex = OblivionMode.Selected
+                ? data.labels.Count - 1
+                : data.IndexFromId(data.selectedObject);
+            __instance.view.SetShowGameModes(data.header, data.GetLabels(), selectedIndex);
+            OblivionMode.Logger.LogInfo("Added Oblivion to the UI2 Creative game-mode row.");
+            if (!OblivionMode.Selected) return;
+
+            OblivionMode.ConfigureDominationRules();
+            __instance.view.SetShowGameModeDescriptionText(OblivionMode.Description);
         }
-
-        data.AddItem(OblivionMode.Label, OblivionMode.ListId);
-        __instance.gameModeData = data;
-        int selectedIndex = OblivionMode.Selected
-            ? data.labels.Count - 1
-            : data.IndexFromId(data.selectedObject);
-        __instance.view.SetShowGameModes(data.header, data.GetLabels(), selectedIndex);
-        OblivionMode.Logger.LogInfo("Added Oblivion to the UI2 Creative game-mode row.");
-        if (!OblivionMode.Selected) return;
-
-        OblivionMode.ConfigureDominationRules();
-        __instance.view.SetShowGameModeDescriptionText(OblivionMode.Description);
+        catch (Exception exception)
+        {
+            // A UI enhancement must never abort the game's setup screen. The
+            // view-boundary patch below remains available as the safe fallback.
+            OblivionMode.Logger.LogWarning(
+                $"Controller game-mode insertion was unavailable; using view fallback: {exception}"
+            );
+        }
     }
 }
 
@@ -259,7 +273,7 @@ internal static class OblivionGameModeViewFallbackPatch
         ref int selected
     )
     {
-        if (!OblivionMode.LooksLikeCreativeRuleLabels(labels)) return;
+        if (!OblivionMode.IsUnexpandedCreativeRuleRow(labels)) return;
         foreach (string label in labels)
         {
             if (string.Equals(label, OblivionMode.Label, StringComparison.OrdinalIgnoreCase)) return;
@@ -280,7 +294,9 @@ internal static class OblivionCreativeModeSelectionUI2Patch
     [HarmonyPrefix]
     private static bool SelectOblivion(GameSetupScreen_UI2 __instance, int index)
     {
-        if (!OblivionMode.IsUI2Index(__instance.gameModeData, index)) return true;
+        bool isOblivion = OblivionMode.IsUI2Index(__instance.gameModeData, index) ||
+                           OblivionMode.IsRenderedUI2Index(__instance, index);
+        if (!isOblivion) return true;
         OblivionMode.SetSelected(true);
         __instance.view.SetShowGameModeDescriptionText(OblivionMode.Description);
         return false;
@@ -289,7 +305,9 @@ internal static class OblivionCreativeModeSelectionUI2Patch
     [HarmonyPostfix]
     private static void ClearWhenAnotherRuleIsSelected(GameSetupScreen_UI2 __instance, int index)
     {
-        if (!OblivionMode.IsUI2Index(__instance.gameModeData, index))
+        bool isOblivion = OblivionMode.IsUI2Index(__instance.gameModeData, index) ||
+                           OblivionMode.IsRenderedUI2Index(__instance, index);
+        if (!isOblivion)
             OblivionMode.SetSelected(false);
     }
 }
