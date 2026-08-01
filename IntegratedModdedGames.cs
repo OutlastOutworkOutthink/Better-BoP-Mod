@@ -5,6 +5,7 @@ using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using PolytopiaBackendBase.Common;
 using PolytopiaBackendBase.Game;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text;
@@ -32,6 +33,7 @@ internal static class IntegratedModdedGames
     private static readonly SemaphoreSlim CommandSubmitLock = new(1, 1);
     private static readonly SemaphoreSlim CommandReceiveLock = new(1, 1);
     private static readonly SemaphoreSlim ResultReportLock = new(1, 1);
+    private static readonly ConcurrentQueue<Action> MainThreadActions = new();
     private static readonly string[] TribeNames =
     {
         "", "Nature", "Ai-Mo", "Aquarion", "Bardur", "Elyrion", "Hoodrick",
@@ -52,6 +54,8 @@ internal static class IntegratedModdedGames
     private static int nextCommandIndex;
     private static bool active;
     private static bool deferredTabLogged;
+    private static int mainThreadId;
+    private static int renderRequested;
 
     internal static bool Active => active;
 
@@ -79,7 +83,7 @@ internal static class IntegratedModdedGames
         {
             try
             {
-                if (HasCurrentAccountLink())
+                if (await RunOnMainThreadAsync(HasCurrentAccountLink).ConfigureAwait(false))
                 {
                     await RefreshMatchesAsync(false).ConfigureAwait(false);
                     if (!string.IsNullOrWhiteSpace(pendingWinnerAccountId))
@@ -263,6 +267,7 @@ internal static class IntegratedModdedGames
         if (!IsModdedIndex(screen.ScreenSelectionList, index))
         {
             selected = false;
+            Interlocked.Exchange(ref renderRequested, 0);
             if (screen.NewGameButton != null) screen.NewGameButton.gameObject.SetActive(true);
             return true;
         }
@@ -271,26 +276,67 @@ internal static class IntegratedModdedGames
         if (screen.NewGameButton != null) screen.NewGameButton.gameObject.SetActive(false);
         screen.replayScreen?.Hide();
         screen.multiplayerScreen?.Show(true);
-        Render();
+        RequestRender();
         _ = RefreshMatchesAsync(true);
         return false;
+    }
+
+    internal static void LeaveScreen(MultiplayerSelectionScreen screen)
+    {
+        if (owner == null || owner.Pointer != screen.Pointer) return;
+        selected = false;
+        Interlocked.Exchange(ref renderRequested, 0);
     }
 
     internal static bool AllowVanillaListBuild(MultiplayerScreen screen)
     {
         if (!selected || owner?.multiplayerScreen == null || owner.multiplayerScreen.Pointer != screen.Pointer) return true;
-        Render();
+        RequestRender();
         return false;
     }
 
-    private static void Render()
+    /// <summary>
+    /// GameManager.Update is a stable Unity main-thread boundary in Polytopia
+    /// 122. All IL2CPP UI and game-state work queued by HTTP continuations is
+    /// drained here instead of trusting SynchronizationContext, which is null
+    /// when PolyMod loads this assembly.
+    /// </summary>
+    internal static void PumpMainThread()
     {
+        Volatile.Write(ref mainThreadId, Environment.CurrentManagedThreadId);
+
+        int processed = 0;
+        while (processed++ < 64 && MainThreadActions.TryDequeue(out Action? action))
+        {
+            try
+            {
+                action();
+            }
+            catch (Exception exception)
+            {
+                logger.LogError($"Integrated main-thread action failed: {exception}");
+            }
+        }
+
+        if (Interlocked.Exchange(ref renderRequested, 0) != 0)
+        {
+            RenderOnMainThread();
+        }
+    }
+
+    private static void RenderOnMainThread()
+    {
+        if (!selected) return;
         MultiplayerScreen? screen = owner?.multiplayerScreen;
-        if (!selected || screen == null) return;
+        if (screen == null) return;
+        if (!screen.isActiveAndEnabled)
+        {
+            RequestRender();
+            return;
+        }
         try
         {
             screen.ClearList();
-            AddInfo(screen, "Modded games", "Discord-created Better BoP games appear here. Both players choose a tribe; the Discord opener always hosts. Current preset: Tiny Dryland, unranked.");
 
             if (!HasCurrentAccountLink())
             {
@@ -312,7 +358,7 @@ internal static class IntegratedModdedGames
             IntegratedMatch[] visible = matches.Where(match => match.Status != "cancelled").ToArray();
             if (visible.Length == 0)
             {
-                AddInfo(screen, "No Modded games", "Create one in Discord with ?open Classic Integrated, then have another connected player join and both accept.");
+                AddInfo(screen, "No ongoing Modded games", "Create one in Discord with ?open Classic Integrated, then have another connected player join and both accept.");
                 screen.AddButtonRow("Refresh", Click(() => _ = RefreshMatchesAsync(true)));
                 return;
             }
@@ -413,8 +459,12 @@ internal static class IntegratedModdedGames
             string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
             if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.UpgradeRequired)
             {
-                UnityEngine.PlayerPrefs.DeleteKey(ServerTokenKey);
-                UnityEngine.PlayerPrefs.Save();
+                await RunOnMainThreadAsync(() =>
+                {
+                    UnityEngine.PlayerPrefs.DeleteKey(ServerTokenKey);
+                    UnityEngine.PlayerPrefs.Save();
+                    return true;
+                }).ConfigureAwait(false);
             }
             if (!response.IsSuccessStatusCode) throw new HttpRequestException(ServerMessage(response, body));
             MatchListResponse? list = JsonSerializer.Deserialize<MatchListResponse>(body);
@@ -526,13 +576,17 @@ internal static class IntegratedModdedGames
         return $"Better BoP server returned {(int)response.StatusCode}.";
     }
 
-    private static void RequestRender() => DiscordAccountLink.RunOnMainThread(Render);
+    private static void RequestRender() => Interlocked.Exchange(ref renderRequested, 1);
 
     private static async Task<string> EnsureServerTokenAsync()
     {
-        string stored = UnityEngine.PlayerPrefs.GetString(ServerTokenKey, string.Empty);
+        string stored = await RunOnMainThreadAsync(() =>
+            UnityEngine.PlayerPrefs.GetString(ServerTokenKey, string.Empty)
+        ).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(stored)) return stored;
-        string integrationToken = UnityEngine.PlayerPrefs.GetString(DiscordAccountLink.IntegrationTokenKey, string.Empty);
+        string integrationToken = await RunOnMainThreadAsync(() =>
+            UnityEngine.PlayerPrefs.GetString(DiscordAccountLink.IntegrationTokenKey, string.Empty)
+        ).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(integrationToken)) throw new InvalidOperationException("Connect Discord before opening Integrated games.");
         string json = JsonSerializer.Serialize(new
         {
@@ -548,8 +602,12 @@ internal static class IntegratedModdedGames
         if (!response.IsSuccessStatusCode) throw new HttpRequestException(ServerMessage(response, body));
         AuthResponse? auth = JsonSerializer.Deserialize<AuthResponse>(body);
         if (string.IsNullOrWhiteSpace(auth?.Token)) throw new InvalidOperationException("Server sign-in returned no token.");
-        UnityEngine.PlayerPrefs.SetString(ServerTokenKey, auth.Token);
-        UnityEngine.PlayerPrefs.Save();
+        await RunOnMainThreadAsync(() =>
+        {
+            UnityEngine.PlayerPrefs.SetString(ServerTokenKey, auth.Token);
+            UnityEngine.PlayerPrefs.Save();
+            return true;
+        }).ConfigureAwait(false);
         return auth.Token;
     }
 
@@ -783,8 +841,15 @@ internal static class IntegratedModdedGames
 
     private static Task<T> RunOnMainThreadAsync<T>(Func<T> action)
     {
+        int knownMainThread = Volatile.Read(ref mainThreadId);
+        if (knownMainThread != 0 && Environment.CurrentManagedThreadId == knownMainThread)
+        {
+            try { return Task.FromResult(action()); }
+            catch (Exception exception) { return Task.FromException<T>(exception); }
+        }
+
         TaskCompletionSource<T> source = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        DiscordAccountLink.RunOnMainThread(() =>
+        MainThreadActions.Enqueue(() =>
         {
             try { source.SetResult(action()); }
             catch (Exception exception) { source.SetException(exception); }
@@ -917,6 +982,14 @@ internal static class ModdedTabEnablePatch
     private static void AddTab(MultiplayerSelectionScreen __instance) => IntegratedModdedGames.EnsureTab(__instance);
 }
 
+[HarmonyPatch(typeof(MultiplayerSelectionScreen), "OnDisable")]
+internal static class ModdedTabDisablePatch
+{
+    [HarmonyPostfix]
+    private static void LeaveModdedScreen(MultiplayerSelectionScreen __instance) =>
+        IntegratedModdedGames.LeaveScreen(__instance);
+}
+
 /// <summary>
 /// MultiplayerSelectionScreen's early lifecycle runs before its serialized
 /// horizontal list has initialized on Polytopia 122. Recheck at the controller
@@ -993,6 +1066,17 @@ internal static class ModdedListBuildPatch
 {
     [HarmonyPrefix]
     private static bool KeepModdedList(MultiplayerScreen __instance) => IntegratedModdedGames.AllowVanillaListBuild(__instance);
+}
+
+/// <summary>
+/// Unity invokes GameManager.Update on its main thread in menus and gameplay.
+/// This dispatcher prevents HTTP continuations from touching IL2CPP objects.
+/// </summary>
+[HarmonyPatch(typeof(GameManager), "Update")]
+internal static class IntegratedMainThreadPumpPatch
+{
+    [HarmonyPostfix]
+    private static void DrainIntegratedWork() => IntegratedModdedGames.PumpMainThread();
 }
 
 [HarmonyPatch(typeof(ClientBase), "SendCommandRemote", new[] { typeof(CommandBase) })]

@@ -116,7 +116,7 @@ the reference assemblies, not that the patched screen executed correctly.
 6. In game, inspect the BepInEx log for both the Alpha load line and the
    `Added Oblivion ...` insertion line before treating the UI as verified.
 
-## Integrated Modded games (Alpha 0.5.16)
+## Integrated Modded games (Alpha 0.5.17)
 
 - Keep the Discord link permanent and version-independent. Compatibility is
   established by `/v1/auth/exchange` from the running client; never require a
@@ -141,6 +141,12 @@ the reference assemblies, not that the patched screen executed correctly.
   once with explicit IDs and the appended Modded entry. Recheck from the owned
   list's `OnEnable` and `CreateItems` boundaries because serialized prefab
   lists may never invoke `SetData` themselves.
+- Alpha 0.5.16 proved the tab injection, but clicking Modded crashed in
+  `MultiplayerScreen.AddInfoRow`: the HTTP continuation reached the native UI
+  while PolyMod's captured `SynchronizationContext` was null. Never mutate
+  IL2CPP UI or game state from an async continuation. Queue it and drain from
+  the verified `GameManager.Update` main-thread boundary; clear pending renders
+  when the multiplayer selection screen disables.
 - Opening a Modded game is explicit. Background polling updates the list and
   command stream but must not unexpectedly load a scene from the main menu.
 - Retry transient `MatchEnded` result failures in memory, then clear the active
