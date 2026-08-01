@@ -3,9 +3,11 @@ set -eu
 
 expected_mode="2f0af054422c6e95d63e86568a8187ee8f4366218e26fcf081e1c885a0be6290"
 expected_opinions="3b3d086e6d35654f345f25cf1e879a139f4cf1cb8357df3a6e9bd1fdec08ed68"
+expected_peace="b670849cc9ce0ad918ecd5a384958d64c2871667d478e81b01379904a98024fe"
 
 actual_mode="$(shasum -a 256 OblivionMode.cs | cut -d ' ' -f 1)"
 actual_opinions="$(shasum -a 256 OblivionOpinions.cs | cut -d ' ' -f 1)"
+actual_peace="$(shasum -a 256 UniversalPeace.cs | cut -d ' ' -f 1)"
 
 test "$actual_mode" = "$expected_mode" || {
   echo "OblivionMode.cs changed from the proven Alpha 0.5.6 baseline." >&2
@@ -13,6 +15,10 @@ test "$actual_mode" = "$expected_mode" || {
 }
 test "$actual_opinions" = "$expected_opinions" || {
   echo "OblivionOpinions.cs changed from the proven Alpha 0.5.6 baseline." >&2
+  exit 1
+}
+test "$actual_peace" = "$expected_peace" || {
+  echo "UniversalPeace.cs changed from the proven Alpha 0.5.12 baseline." >&2
   exit 1
 }
 
@@ -73,4 +79,4 @@ do
   fi
 done
 
-echo "Locked Oblivion and Discord baselines plus isolated universal peace verified."
+echo "Locked Oblivion and Alpha 0.5.12 universal-peace baselines verified."

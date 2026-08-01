@@ -71,6 +71,14 @@ the reference assemblies, not that the patched screen executed correctly.
 - A reboot retaining the green state proves `PlayerPrefs` persistence and the
   server-side link succeeded; it does not prove the live focus-return UI path
   was safe. Check the log around `ApplicationFocused False/True` separately.
+- Treat a green account-link control as status, not as permission to start a
+  second OAuth flow. Guard the shared click entry point before creating a link
+  session; every pointer/controller route already converges there.
+- The API is the authoritative second guard: reject a link-session request for
+  an existing Polytopia ID, enforce immutable one-to-one Discord/Polytopia
+  uniqueness in the callback transaction, and announce only when the insert
+  actually returns a new row. Same-pair race/legacy callbacks may refresh the
+  credential but must not insert or announce again.
 
 ## Universal peace treaties (Polytopia 122 / PolyMod 1.2.17)
 

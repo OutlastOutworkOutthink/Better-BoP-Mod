@@ -1,6 +1,6 @@
-# Archived features — inactive in Alpha 0.5.12
+# Archived features — inactive in Alpha 0.5.13
 
-Alpha 0.5.12 keeps the reset gameplay baseline. Only `Main.cs`,
+Alpha 0.5.13 keeps the reset gameplay baseline. Only `Main.cs`,
 `OblivionMode.cs`, `OblivionOpinions.cs`, `DiscordAccountLink.cs`, and the
 isolated `UniversalPeace.cs` module are compiled as mod behavior.
 
