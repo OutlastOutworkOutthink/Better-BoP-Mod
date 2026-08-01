@@ -78,6 +78,7 @@ internal static class OblivionOpinions
 internal static class OblivionOpinionValuePatch
 {
     [HarmonyPostfix]
+    [HarmonyPriority(Priority.Last)]
     private static void ApplyOblivionOpinion(
         GameState gameState,
         PlayerState playerState,
@@ -90,15 +91,15 @@ internal static class OblivionOpinionValuePatch
 
         if (OblivionOpinions.IsBot(subject))
         {
-            // Exactly +200 "charming", with a love floor so ordinary negative
-            // observations can never split the Oblivion bot alliance.
-            __result = Math.Max(OpinionManager.LoveLimit, __result + OblivionOpinions.BotAllianceBonus);
+            // This is a final value, not a bonus. Difficulty and ordinary
+            // observations therefore cannot split the bot alliance.
+            __result = OblivionOpinions.BotAllianceBonus;
         }
         else if (OblivionOpinions.IsLocal(subject.Id))
         {
-            // Exactly -200 "the enemy", with a hate ceiling so ordinary boons
-            // can never make an Oblivion bot friendly toward the player.
-            __result = Math.Min(OpinionManager.HateLimit, __result + OblivionOpinions.PlayerEnemyPenalty);
+            // This is a final value, so Easy's charming modifier and any other
+            // ordinary boon cannot raise the relation above Horrible.
+            __result = OblivionOpinions.PlayerEnemyPenalty;
         }
     }
 }
@@ -109,6 +110,7 @@ internal static class OblivionEnemyReasonLabelPatch
     private sealed record DisplayReason(string Label, float Value, Color Color, int Order);
 
     [HarmonyPostfix]
+    [HarmonyPriority(Priority.Last)]
     private static void PutEnemyFirst(
         PlayerInfoPopup __instance,
         Il2CppSystem.Collections.Generic.List<Il2CppSystem.Collections.Generic.KeyValuePair<OpinionManager.Type, float>> reasons,
@@ -132,13 +134,38 @@ internal static class OblivionEnemyReasonLabelPatch
         {
             foreach (var reason in reasons)
             {
-                if (Math.Abs(reason.Value) < 0.001f) continue;
                 string label = OblivionOpinions.NativeLabel(reason.Key);
                 if (string.IsNullOrWhiteSpace(label)) continue;
                 Color color = reason.Value >= 0f ? Color.green : Color.red;
                 if (opinionColors.TryGetValue(label, out Color nativeColor)) color = nativeColor;
                 candidates.Add(new DisplayReason(label, reason.Value, color, order++));
             }
+        }
+
+        // The normal UI reserves space for three tags. Some early-game states
+        // expose fewer than two non-zero native reasons, so use localized
+        // zero-value native labels only as visual fillers after real reasons.
+        foreach (OpinionManager.Type fallback in new[]
+                 {
+                     OpinionManager.Type.Like,
+                     OpinionManager.Type.Powerful,
+                     OpinionManager.Type.Peaceful,
+                     OpinionManager.Type.Weak,
+                     OpinionManager.Type.Intrusive,
+                 })
+        {
+            if (candidates
+                .Select(candidate => candidate.Label)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count() >= 3)
+                break;
+
+            string label = OblivionOpinions.NativeLabel(fallback);
+            if (string.IsNullOrWhiteSpace(label) ||
+                candidates.Any(candidate =>
+                    string.Equals(candidate.Label, label, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            candidates.Add(new DisplayReason(label, 0f, Color.green, order++));
         }
 
         List<DisplayReason> selected = candidates
@@ -179,6 +206,44 @@ internal static class OblivionEnemyReasonLabelPatch
             if (firstReason != int.MaxValue) return current[..firstReason];
         }
         return "They think you are ";
+    }
+}
+
+/// <summary>
+/// PlayerInfoPopup asks vanilla to turn a numeric opinion into the localized
+/// relation label. Force the input to the enemy value so it always renders the
+/// native Horrible label, even if another UI path cached a pre-Oblivion total.
+/// </summary>
+[HarmonyPatch(typeof(PlayerInfoPopup), nameof(PlayerInfoPopup.GetOpinionTextFromValue))]
+internal static class OblivionPopupRelationTextPatch
+{
+    [HarmonyPrefix]
+    [HarmonyPriority(Priority.First)]
+    private static void ForceHorribleValue(PlayerInfoPopup __instance, ref float opinionValue)
+    {
+        PlayerState observer = __instance.player;
+        PlayerState subject = GameManager.LocalPlayer;
+        GameState state = GameManager.GameState;
+        if (OblivionOpinions.ShouldShowEnemyReason(observer, subject, state))
+            opinionValue = OblivionOpinions.PlayerEnemyPenalty;
+    }
+}
+
+[HarmonyPatch(typeof(PlayerInfoPopup), nameof(PlayerInfoPopup.Refresh))]
+internal static class OblivionPopupRelationSliderPatch
+{
+    [HarmonyPostfix]
+    [HarmonyPriority(Priority.Last)]
+    private static void ForceHorribleSlider(PlayerInfoPopup __instance)
+    {
+        PlayerState observer = __instance.player;
+        PlayerState subject = GameManager.LocalPlayer;
+        GameState state = GameManager.GameState;
+        if (!OblivionOpinions.ShouldShowEnemyReason(observer, subject, state) ||
+            __instance.relationSlider == null)
+            return;
+
+        __instance.relationSlider.value = __instance.relationSlider.minValue;
     }
 }
 

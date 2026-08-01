@@ -4,7 +4,7 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.5.4 deliberately loads only Oblivion. Older experiments remain in
+/// Alpha 0.5.5 deliberately loads only Oblivion. Older experiments remain in
 /// the repository as archived source, but the project excludes them from the
 /// DLL and this entry point never initializes them.
 /// </summary>
@@ -31,13 +31,16 @@ public static class Main
         SafePatch(typeof(OblivionLateViewLayoutPatch), logger);
         SafePatch(typeof(OblivionCreativeModeSelectionUI2Patch), logger);
         SafePatch(typeof(OblivionNewGameArmPatch), logger);
+        SafePatch(typeof(OblivionSetupStartArmPatch), logger);
         SafePatch(typeof(OblivionNewGameReadyPatch), logger);
         SafePatch(typeof(OblivionOpinionValuePatch), logger);
         SafePatch(typeof(OblivionEnemyReasonLabelPatch), logger);
+        SafePatch(typeof(OblivionPopupRelationTextPatch), logger);
+        SafePatch(typeof(OblivionPopupRelationSliderPatch), logger);
         SafePatch(typeof(OblivionEnemyReasonButtonPatch), logger);
         SafePatch(typeof(OblivionEnemyReasonClickPatch), logger);
 
-        logger.LogMessage("Better BoP Alpha 0.5.4 loaded: Oblivion only.");
+        logger.LogMessage("Better BoP Alpha 0.5.5 loaded: Oblivion only.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)
