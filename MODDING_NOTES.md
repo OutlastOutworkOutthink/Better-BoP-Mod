@@ -116,7 +116,7 @@ the reference assemblies, not that the patched screen executed correctly.
 6. In game, inspect the BepInEx log for both the Alpha load line and the
    `Added Oblivion ...` insertion line before treating the UI as verified.
 
-## Integrated Modded games (Alpha 0.5.15)
+## Integrated Modded games (Alpha 0.5.16)
 
 - Keep the Discord link permanent and version-independent. Compatibility is
   established by `/v1/auth/exchange` from the running client; never require a
@@ -135,6 +135,12 @@ the reference assemblies, not that the patched screen executed correctly.
   content `OnScreenUpdated` boundaries. Also guard the owned
   `UIHorizontalList.SetData` postfix so a later asynchronous vanilla refresh
   cannot replace Modded with only Ongoing/Replays again.
+- Alpha 0.5.15 proved that the visible prefab row can remain usable while both
+  `data` and `ids` stay null and `SetData` never runs. Reconstruct the two
+  vanilla labels from `keys` or the rendered `items` text, then call `SetData`
+  once with explicit IDs and the appended Modded entry. Recheck from the owned
+  list's `OnEnable` and `CreateItems` boundaries because serialized prefab
+  lists may never invoke `SetData` themselves.
 - Opening a Modded game is explicit. Background polling updates the list and
   command stream but must not unexpectedly load a scene from the main menu.
 - Retry transient `MatchEnded` result failures in memory, then clear the active
