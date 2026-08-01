@@ -115,3 +115,31 @@ the reference assemblies, not that the patched screen executed correctly.
 5. Test ZIP integrity and inspect the packaged manifest version.
 6. In game, inspect the BepInEx log for both the Alpha load line and the
    `Added Oblivion ...` insertion line before treating the UI as verified.
+
+## Integrated Modded games (Alpha 0.5.14)
+
+- Keep the Discord link permanent and version-independent. Compatibility is
+  established by `/v1/auth/exchange` from the running client; never require a
+  player to recreate OAuth just because the mod version changed.
+- Discord acceptance and in-game tribe selection are separate state-machine
+  steps: `awaiting_acceptance` → `waiting_for_tribes` → `ready_to_start` →
+  `provisioning` → `active` → `completed|disputed`.
+- The server creates the lobby/game record after both Discord accepts, but only
+  the immutable host may leave `ready_to_start`. Both tribe IDs must be present.
+- Add Modded by extending `MultiplayerSelectionScreen.ScreenSelectionList` and
+  render rows through the stock `MultiplayerScreen`. Do not alter the Ongoing or
+  Replays models, and restore the stock New Game button when leaving Modded.
+- Opening a Modded game is explicit. Background polling updates the list and
+  command stream but must not unexpectedly load a scene from the main menu.
+- Retry transient `MatchEnded` result failures in memory, then clear the active
+  transport as soon as the server acknowledges the result.
+- Alpha 0.5.14 locks the first preset to map size 121, Dryland, two players, and
+  Domination. The ruleset contains no Warrior or other unit-stat override.
+- Command transport is participant-only, ordered, idempotent, and turn-gated.
+  Result completion remains dual-report: both clients must name the same winner;
+  disagreements are disputed and never change bot Elo.
+- Before release, run the source hash verifier and a clean Release build, then
+  perform a real two-PC smoke test: tabs, both tribe picks, host-only Start,
+  first turn, end turn in each direction, reopen, resignation, capital capture,
+  Discord completion, and unchanged Elo. A compile cannot prove native IL2CPP
+  session/player ownership behavior.

@@ -18,8 +18,8 @@
   </ItemGroup>
 
   <!--
-    Alpha 0.5.13 compiles the locked Oblivion and UniversalPeace baselines plus
-    the isolated one-link Discord module. The files below stay in git as
+    Alpha 0.5.14 compiles the locked Oblivion and UniversalPeace baselines,
+    one-link Discord, and the isolated Integrated Modded-game client. The files below stay in git as
     implementation history, but none of their types enter the DLL.
   -->
   <ItemGroup>
