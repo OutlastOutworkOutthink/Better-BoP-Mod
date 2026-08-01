@@ -4,9 +4,8 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.5.6 deliberately loads only Oblivion. Older experiments remain in
-/// the repository as archived source, but the project excludes them from the
-/// DLL and this entry point never initializes them.
+/// Alpha 0.5.7 loads the locked Oblivion baseline plus the isolated Discord
+/// account-link control. Older experiments remain archived and excluded.
 /// </summary>
 public static class Main
 {
@@ -18,6 +17,7 @@ public static class Main
         loaded = true;
 
         OblivionMode.Logger = logger;
+        DiscordAccountLink.Initialize(logger);
 
         SafePatch(typeof(OblivionCreativeModeListPatch), logger);
         SafePatch(typeof(OblivionClassicRenderedRowPatch), logger);
@@ -45,7 +45,9 @@ public static class Main
         SafePatch(typeof(OblivionEnemyReasonButtonPatch), logger);
         SafePatch(typeof(OblivionEnemyReasonClickPatch), logger);
 
-        logger.LogMessage("Better BoP Alpha 0.5.6 loaded: Oblivion only.");
+        SafePatch(typeof(DiscordAccountLink), logger);
+
+        logger.LogMessage("Better BoP Alpha 0.5.7 loaded: locked Oblivion plus Discord account linking.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)
