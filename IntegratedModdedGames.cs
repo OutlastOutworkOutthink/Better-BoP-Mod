@@ -51,6 +51,7 @@ internal static class IntegratedModdedGames
     private static string pendingWinnerAccountId = string.Empty;
     private static int nextCommandIndex;
     private static bool active;
+    private static bool deferredTabLogged;
 
     internal static bool Active => active;
 
@@ -108,7 +109,15 @@ internal static class IntegratedModdedGames
         {
             owner = screen;
             UIHorizontalList list = screen.ScreenSelectionList;
-            if (list?.data == null || list.ids == null) return false;
+            if (list?.data == null || list.ids == null)
+            {
+                if (!deferredTabLogged)
+                {
+                    deferredTabLogged = true;
+                    logger.LogInfo("Modded tab insertion deferred until the multiplayer list finishes initializing.");
+                }
+                return false;
+            }
             for (int index = 0; index < list.data.Length; index++)
             {
                 if (IsModdedIndex(list, index)) return true;
@@ -131,6 +140,7 @@ internal static class IntegratedModdedGames
             labels[oldLength] = Label;
             ids[oldLength] = TabId;
             list.SetData(labels, ids, selected ? oldLength : list.SelectedIndex, false);
+            deferredTabLogged = false;
             logger.LogInfo("Added Modded beside Ongoing and Replays.");
             return true;
         }
@@ -139,6 +149,20 @@ internal static class IntegratedModdedGames
             logger.LogWarning($"Could not add the Modded multiplayer tab yet: {exception.Message}");
             return false;
         }
+    }
+
+    internal static void EnsureOwnedTab()
+    {
+        MultiplayerSelectionScreen? screen = owner;
+        if (screen != null) EnsureTab(screen);
+    }
+
+    internal static void EnsureOwnedTab(UIHorizontalList list)
+    {
+        MultiplayerSelectionScreen? screen = owner;
+        UIHorizontalList? ownedList = screen?.ScreenSelectionList;
+        if (screen == null || ownedList == null || ownedList.Pointer != list.Pointer) return;
+        EnsureTab(screen);
     }
 
     internal static bool IsModdedIndex(UIHorizontalList list, int index)
@@ -807,6 +831,51 @@ internal static class ModdedTabEnablePatch
 {
     [HarmonyPostfix]
     private static void AddTab(MultiplayerSelectionScreen __instance) => IntegratedModdedGames.EnsureTab(__instance);
+}
+
+/// <summary>
+/// MultiplayerSelectionScreen's early lifecycle runs before its serialized
+/// horizontal list has initialized on Polytopia 122. Recheck at the controller
+/// and content boundaries that execute after the visible row exists.
+/// </summary>
+[HarmonyPatch]
+internal static class ModdedTabLateLifecyclePatch
+{
+    private static IEnumerable<MethodBase> TargetMethods()
+    {
+        yield return AccessTools.Method(
+            typeof(MultiplayerSelectionScreen),
+            nameof(MultiplayerSelectionScreen.UpdateScreenSelectionListSelectedIndex)
+        );
+        yield return AccessTools.Method(typeof(MultiplayerScreen), nameof(MultiplayerScreen.OnScreenUpdated));
+        yield return AccessTools.Method(typeof(ReplaysScreen), nameof(ReplaysScreen.OnScreenUpdated));
+    }
+
+    [HarmonyPostfix]
+    private static void AddTabAfterVisibleScreenUpdate() => IntegratedModdedGames.EnsureOwnedTab();
+}
+
+/// <summary>
+/// Vanilla can repopulate the Ongoing/Replays list asynchronously. This final
+/// data-boundary guard restores Modded after any such refresh and is a no-op
+/// for every other horizontal list.
+/// </summary>
+[HarmonyPatch(
+    typeof(UIHorizontalList),
+    nameof(UIHorizontalList.SetData),
+    new[]
+    {
+        typeof(Il2CppStringArray),
+        typeof(Il2CppStructArray<int>),
+        typeof(int),
+        typeof(bool),
+    }
+)]
+internal static class ModdedTabSetDataPatch
+{
+    [HarmonyPostfix]
+    private static void RestoreTabAfterDataChange(UIHorizontalList __instance) =>
+        IntegratedModdedGames.EnsureOwnedTab(__instance);
 }
 
 [HarmonyPatch(typeof(MultiplayerSelectionScreen), nameof(MultiplayerSelectionScreen.OnScreenSelectionListChanged))]
