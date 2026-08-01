@@ -18,9 +18,9 @@
   </ItemGroup>
 
   <!--
-    Alpha 0.5.10 compiles the locked Oblivion baseline plus the isolated Discord
-    account-link module. The files below stay in git as implementation history,
-    but none of their types enter the DLL.
+    Alpha 0.5.11 compiles the locked Oblivion and Discord baselines plus the
+    isolated UniversalPeace module. The files below stay in git as
+    implementation history, but none of their types enter the DLL.
   -->
   <ItemGroup>
     <Compile Remove="BetterBoPRules.cs" />

@@ -34,7 +34,18 @@ for symbol in \
   DiscordProfileEnablePatch \
   DiscordUILibraryReadyPatch \
   DiscordRoundButtonLayoutPatch \
-  DiscordControllerClickPatch
+  DiscordControllerClickPatch \
+  UniversalPeaceRules \
+  UniversalPeaceParsedRulesPatch \
+  UniversalPeaceAbilityUnlockPatch \
+  UniversalPeaceHasAbilityPatch \
+  UniversalPeaceUnlockedAbilitiesPatch \
+  UniversalPeaceRequiredTechPatch \
+  UniversalPeaceTechTreePatch \
+  UniversalPeaceTechPopupPatch \
+  UniversalPeaceDiplomacyButtonPatch \
+  UniversalPeaceUnavailablePopupPatch \
+  UniversalPeaceAIPreparePatch
 do
   strings "$dll" | grep -q "$symbol" || {
     echo "Release DLL is missing required symbol: $symbol" >&2
@@ -58,4 +69,4 @@ do
   fi
 done
 
-echo "Locked Oblivion baseline and isolated Discord account link verified."
+echo "Locked Oblivion and Discord baselines plus isolated universal peace verified."

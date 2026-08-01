@@ -4,8 +4,8 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.5.10 loads the locked Oblivion baseline plus the isolated Discord
-/// account-link control. Older experiments remain archived and excluded.
+/// Alpha 0.5.11 loads the locked Oblivion and Discord baselines plus one
+/// isolated universal peace-treaty feature. Older experiments remain archived.
 /// </summary>
 public static class Main
 {
@@ -18,6 +18,7 @@ public static class Main
 
         OblivionMode.Logger = logger;
         DiscordAccountLink.Initialize(logger);
+        UniversalPeaceRules.Logger = logger;
 
         SafePatch(typeof(OblivionCreativeModeListPatch), logger);
         SafePatch(typeof(OblivionClassicRenderedRowPatch), logger);
@@ -58,7 +59,18 @@ public static class Main
         SafePatch(typeof(DiscordRoundButtonEnablePatch), logger);
         SafePatch(typeof(DiscordControllerClickPatch), logger);
 
-        logger.LogMessage("Better BoP Alpha 0.5.10 loaded: locked Oblivion plus lifecycle-safe Discord account linking.");
+        SafePatch(typeof(UniversalPeaceParsedRulesPatch), logger);
+        SafePatch(typeof(UniversalPeaceAbilityUnlockPatch), logger);
+        SafePatch(typeof(UniversalPeaceHasAbilityPatch), logger);
+        SafePatch(typeof(UniversalPeaceUnlockedAbilitiesPatch), logger);
+        SafePatch(typeof(UniversalPeaceRequiredTechPatch), logger);
+        SafePatch(typeof(UniversalPeaceTechTreePatch), logger);
+        SafePatch(typeof(UniversalPeaceTechPopupPatch), logger);
+        SafePatch(typeof(UniversalPeaceDiplomacyButtonPatch), logger);
+        SafePatch(typeof(UniversalPeaceUnavailablePopupPatch), logger);
+        SafePatch(typeof(UniversalPeaceAIPreparePatch), logger);
+
+        logger.LogMessage("Better BoP Alpha 0.5.11 loaded: locked Oblivion and Discord plus universal peace treaties.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)
