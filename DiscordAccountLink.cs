@@ -18,7 +18,7 @@ namespace BetterBoPMod;
 internal static class DiscordAccountLink
 {
     internal const string ApiBaseUrl = "https://polyeconomic-bot-production.up.railway.app";
-    internal const string ModVersion = "0.5.13";
+    internal const string ModVersion = "0.5.14";
     internal const string IntegrationTokenKey = "polyeconomic.integration.token";
     internal const string LinkedAccountIdKey = "polyeconomic.integration.account_id";
 
@@ -450,7 +450,7 @@ internal static class DiscordAccountLink
         }
     }
 
-    private static void RunOnMainThread(Action action)
+    internal static void RunOnMainThread(Action action)
     {
         if (mainThread == null || SynchronizationContext.Current == mainThread)
         {

@@ -1,15 +1,15 @@
-# Better Battle of Polytopia Mod — Alpha 0.5.13
+# Better Battle of Polytopia Mod — Alpha 0.5.14
 
-This Alpha keeps the working Oblivion and Discord integration behavior locked,
-then adds one isolated gameplay feature: universal peace treaties. All other
-earlier gameplay, multiplayer, and experimental UI changes remain inactive.
+This Alpha keeps the working Oblivion, Discord integration, and universal-peace
+behavior locked, then adds the isolated client for bot-created Modded games.
+All other earlier gameplay and experimental UI changes remain inactive.
 
 ## Oblivion
 
 Open **Creative**, continue to tribe/game setup, and select **Oblivion** in the
 same rule row as **Perfection**, **Domination**, and **Infinity**.
 
-Alpha 0.5.13 retains both the visible legacy setup row and UI2's later layout
+Alpha 0.5.14 retains both the visible legacy setup row and UI2's later layout
 callbacks, after Polytopia has actually created the game-mode controls.
 
 Oblivion keeps all normal Creative setup choices, but the match itself uses
@@ -59,7 +59,7 @@ from Strategy's unlock list and is shown as available in tribe information even
 before Strategy is researched. Sending a request no longer opens the obsolete
 Strategy warning after the request is sent.
 
-Alpha 0.5.13 retains the legacy tribe-info fix that replaces separate enabled and
+Alpha 0.5.14 retains the legacy tribe-info fix that replaces separate enabled and
 disabled callbacks with one deduplicated peace action. The icon therefore uses
 its available appearance and a click cannot also reach the old Strategy popup.
 
@@ -67,6 +67,23 @@ Bot diplomacy uses the same base ability, so bots can consider and send peace
 requests to other bots without Strategy. Their normal opinion and scoring still
 decide whether they actually choose the request. Oblivion remains authoritative:
 bots still reject/remove peace with the local enemy and preserve bot alliances.
+
+## Integrated Modded games
+
+Connected players can use `?open Classic Integrated` in Discord and another
+connected player can join it. After both accept in Discord, open Multiplayer in
+Polytopia and select the new **Modded** tab beside **Ongoing** and **Replays**.
+
+Both players select a tribe there. The Discord opener is permanently the host
+and receives the Start button once both tribes are selected. Alpha 0.5.14 creates
+a two-player **Tiny Dryland Domination** game; Integrated games are unranked.
+The private Better BoP server stores the initial state and ordered command bytes,
+then reports an agreed in-game winner to the bot after resignation or capital
+capture. It does not collect a Polytopia or Steam password.
+
+The permanent Discord link is identity only. Alpha 0.5.14 separately proves its
+current mod/ruleset version to the multiplayer server, so players do not need to
+relink Discord for every future release.
 
 ## Inactive archive
 
@@ -76,7 +93,7 @@ explicitly excluded from `BetterBoPMod.dll`. See
 
 ## Install
 
-Download the Alpha 0.5.13 release ZIP, extract it, and place the
+Download the Alpha 0.5.14 release ZIP, extract it, and place the
 `Better-BoP-Mod` folder directly inside Polytopia's `Mods` directory. These files
 must be together at that folder's top level:
 
@@ -92,7 +109,7 @@ converted into Oblivion games.
 The BepInEx log confirms a successful load with:
 
 ```text
-Better BoP Alpha 0.5.13 loaded: locked Oblivion and universal peace plus one-link Discord integration.
+Better BoP Alpha 0.5.14 loaded: locked gameplay baselines plus bot-provisioned Integrated Modded games.
 ```
 
 ## Development

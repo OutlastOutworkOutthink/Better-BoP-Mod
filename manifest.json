@@ -1,8 +1,8 @@
 {
   "id": "better_bop_mod",
   "name": "Better Battle of Polytopia Mod (Alpha)",
-  "description": "Oblivion mode, Discord registration, and universal peace treaties.",
-  "version": "0.5.13",
+  "description": "Oblivion, universal peace, Discord registration, and bot-provisioned Modded multiplayer.",
+  "version": "0.5.14",
   "authors": [
     "OutlastOutworkOutthink"
   ]

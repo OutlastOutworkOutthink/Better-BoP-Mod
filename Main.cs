@@ -4,8 +4,8 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.5.13 loads the locked Oblivion and universal-peace baselines plus
-/// the isolated, one-link-per-account Discord control.
+/// Alpha 0.5.14 keeps the locked gameplay baselines and adds the isolated,
+/// bot-provisioned Integrated Modded-game client.
 /// </summary>
 public static class Main
 {
@@ -18,6 +18,7 @@ public static class Main
 
         OblivionMode.Logger = logger;
         DiscordAccountLink.Initialize(logger);
+        IntegratedModdedGames.Initialize(logger);
         UniversalPeaceRules.Logger = logger;
 
         SafePatch(typeof(OblivionCreativeModeListPatch), logger);
@@ -59,6 +60,14 @@ public static class Main
         SafePatch(typeof(DiscordRoundButtonEnablePatch), logger);
         SafePatch(typeof(DiscordControllerClickPatch), logger);
 
+        SafePatch(typeof(ModdedTabAwakePatch), logger);
+        SafePatch(typeof(ModdedTabShowPatch), logger);
+        SafePatch(typeof(ModdedTabEnablePatch), logger);
+        SafePatch(typeof(ModdedTabSelectionPatch), logger);
+        SafePatch(typeof(ModdedListBuildPatch), logger);
+        SafePatch(typeof(IntegratedModdedCommandPatch), logger);
+        SafePatch(typeof(IntegratedModdedResultPatch), logger);
+
         SafePatch(typeof(UniversalPeaceParsedRulesPatch), logger);
         SafePatch(typeof(UniversalPeaceAbilityUnlockPatch), logger);
         SafePatch(typeof(UniversalPeaceHasAbilityPatch), logger);
@@ -73,7 +82,7 @@ public static class Main
         SafePatch(typeof(UniversalPeaceUnavailablePopupPatch), logger);
         SafePatch(typeof(UniversalPeaceAIPreparePatch), logger);
 
-        logger.LogMessage("Better BoP Alpha 0.5.13 loaded: locked Oblivion and universal peace plus one-link Discord integration.");
+        logger.LogMessage("Better BoP Alpha 0.5.14 loaded: locked gameplay baselines plus bot-provisioned Integrated Modded games.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)

@@ -1,8 +1,9 @@
-# Archived features — inactive in Alpha 0.5.13
+# Archived features — inactive in Alpha 0.5.14
 
-Alpha 0.5.13 keeps the reset gameplay baseline. Only `Main.cs`,
+Alpha 0.5.14 keeps the reset gameplay baseline. Only `Main.cs`,
 `OblivionMode.cs`, `OblivionOpinions.cs`, `DiscordAccountLink.cs`, and the
-isolated `UniversalPeace.cs` module are compiled as mod behavior.
+isolated `UniversalPeace.cs` and `IntegratedModdedGames.cs` modules are compiled
+as mod behavior.
 
 The following source files are preserved as notes/history but explicitly
 excluded in `BetterBoPMod.csproj`, so they cannot patch or change the game:
@@ -14,7 +15,7 @@ excluded in `BetterBoPMod.csproj`, so they cannot patch or change the game:
 | `GrowGiant.cs` | Giant Seed and Grow Giant |
 | `TribeRelations.cs` | respected, hated, dominating, generous, old Oblivion code |
 | `DiscordIntegration.cs` | superseded account-link UI plus multiplayer coupling |
-| `IntegratedMultiplayer.cs` | server-created game integration |
+| `IntegratedMultiplayer.cs` | superseded experimental server client; replaced by isolated `IntegratedModdedGames.cs` |
 | `MultiplayerRestrictions.cs` | friend/random/manual multiplayer restrictions |
 
 Do not reactivate an archived file wholesale. Future features should be rebuilt
