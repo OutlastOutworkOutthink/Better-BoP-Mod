@@ -18,6 +18,8 @@ namespace BetterBoPMod;
 internal static class DiscordAccountLink
 {
     internal const string ApiBaseUrl = "https://polyeconomic-bot-production.up.railway.app";
+    // Alpha 0.5.15 changes only client UI timing. It deliberately speaks the
+    // unchanged 0.5.14 multiplayer ruleset/protocol to the live server.
     internal const string ModVersion = "0.5.14";
     internal const string IntegrationTokenKey = "polyeconomic.integration.token";
     internal const string LinkedAccountIdKey = "polyeconomic.integration.account_id";

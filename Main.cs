@@ -4,8 +4,8 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.5.14 keeps the locked gameplay baselines and adds the isolated,
-/// bot-provisioned Integrated Modded-game client.
+/// Alpha 0.5.15 keeps the locked gameplay baselines and adds the isolated,
+/// bot-provisioned Integrated Modded-game client with resilient tab insertion.
 /// </summary>
 public static class Main
 {
@@ -63,6 +63,8 @@ public static class Main
         SafePatch(typeof(ModdedTabAwakePatch), logger);
         SafePatch(typeof(ModdedTabShowPatch), logger);
         SafePatch(typeof(ModdedTabEnablePatch), logger);
+        SafePatch(typeof(ModdedTabLateLifecyclePatch), logger);
+        SafePatch(typeof(ModdedTabSetDataPatch), logger);
         SafePatch(typeof(ModdedTabSelectionPatch), logger);
         SafePatch(typeof(ModdedListBuildPatch), logger);
         SafePatch(typeof(IntegratedModdedCommandPatch), logger);
@@ -82,7 +84,7 @@ public static class Main
         SafePatch(typeof(UniversalPeaceUnavailablePopupPatch), logger);
         SafePatch(typeof(UniversalPeaceAIPreparePatch), logger);
 
-        logger.LogMessage("Better BoP Alpha 0.5.14 loaded: locked gameplay baselines plus bot-provisioned Integrated Modded games.");
+        logger.LogMessage("Better BoP Alpha 0.5.15 loaded: locked gameplay baselines plus resilient bot-provisioned Integrated Modded games.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)

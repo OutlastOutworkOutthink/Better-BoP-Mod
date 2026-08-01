@@ -116,7 +116,7 @@ the reference assemblies, not that the patched screen executed correctly.
 6. In game, inspect the BepInEx log for both the Alpha load line and the
    `Added Oblivion ...` insertion line before treating the UI as verified.
 
-## Integrated Modded games (Alpha 0.5.14)
+## Integrated Modded games (Alpha 0.5.15)
 
 - Keep the Discord link permanent and version-independent. Compatibility is
   established by `/v1/auth/exchange` from the running client; never require a
@@ -129,6 +129,12 @@ the reference assemblies, not that the patched screen executed correctly.
 - Add Modded by extending `MultiplayerSelectionScreen.ScreenSelectionList` and
   render rows through the stock `MultiplayerScreen`. Do not alter the Ongoing or
   Replays models, and restore the stock New Game button when leaving Modded.
+- Alpha 0.5.14 proved that `Awake`, `OnEnable`, and `Show` can all execute while
+  `ScreenSelectionList.data/ids` are still null: every Harmony patch loaded but
+  no insertion or exception was logged. Recheck after the selected-screen and
+  content `OnScreenUpdated` boundaries. Also guard the owned
+  `UIHorizontalList.SetData` postfix so a later asynchronous vanilla refresh
+  cannot replace Modded with only Ongoing/Replays again.
 - Opening a Modded game is explicit. Background polling updates the list and
   command stream but must not unexpectedly load a scene from the main menu.
 - Retry transient `MatchEnded` result failures in memory, then clear the active
