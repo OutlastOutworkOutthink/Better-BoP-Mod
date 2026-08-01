@@ -109,39 +109,57 @@ internal static class IntegratedModdedGames
         {
             owner = screen;
             UIHorizontalList list = screen.ScreenSelectionList;
-            if (list?.data == null || list.ids == null)
+            if (list == null || !TryGetVisibleTabLabels(list, out List<string> currentLabels, out string source))
             {
                 if (!deferredTabLogged)
                 {
                     deferredTabLogged = true;
-                    logger.LogInfo("Modded tab insertion deferred until the multiplayer list finishes initializing.");
+                    int dataCount = list?.data == null ? -1 : list.data.Length;
+                    int keyCount = list?.keys == null ? -1 : list.keys.Length;
+                    int itemCount = list?.items == null ? -1 : list.items.Length;
+                    int idCount = list?.ids == null ? -1 : list.ids.Length;
+                    logger.LogInfo(
+                        "Modded tab insertion deferred until a live multiplayer row source exists " +
+                        $"(data={dataCount}, keys={keyCount}, items={itemCount}, ids={idCount})."
+                    );
                 }
                 return false;
             }
-            for (int index = 0; index < list.data.Length; index++)
+
+            if (list.data != null && list.ids != null)
             {
-                if (IsModdedIndex(list, index)) return true;
+                for (int index = 0; index < list.data.Length; index++)
+                {
+                    if (IsModdedIndex(list, index)) return true;
+                }
             }
 
-            int oldLength = list.data.Length;
-            Il2CppStringArray labels = new(oldLength + 1);
-            Il2CppStructArray<int> ids = new(oldLength + 1);
+            int moddedIndex = currentLabels.FindIndex(
+                label => string.Equals(label, Label, StringComparison.OrdinalIgnoreCase)
+            );
+            int oldLength = currentLabels.Count;
+            int newLength = moddedIndex >= 0 ? oldLength : oldLength + 1;
+            if (moddedIndex < 0) moddedIndex = oldLength;
+            Il2CppStringArray labels = new(newLength);
+            Il2CppStructArray<int> ids = new(newLength);
             for (int index = 0; index < oldLength; index++)
             {
-                string label = list.data[index];
-                if (list.useDataAsLocalizationKeys)
-                {
-                    string? localized = LocalizationManager.GetTranslation(label);
-                    if (!string.IsNullOrWhiteSpace(localized)) label = localized;
-                }
-                labels[index] = label;
-                ids[index] = index < list.ids.Length ? list.ids[index] : index;
+                labels[index] = currentLabels[index];
+                ids[index] = index == moddedIndex
+                    ? TabId
+                    : list.ids != null && index < list.ids.Length ? list.ids[index] : index;
             }
-            labels[oldLength] = Label;
-            ids[oldLength] = TabId;
-            list.SetData(labels, ids, selected ? oldLength : list.SelectedIndex, false);
+            if (newLength > oldLength)
+            {
+                labels[moddedIndex] = Label;
+                ids[moddedIndex] = TabId;
+            }
+
+            int selectedIndex = selected ? moddedIndex : list.SelectedIndex;
+            if (selectedIndex < 0 || selectedIndex >= newLength) selectedIndex = 0;
+            list.SetData(labels, ids, selectedIndex, false);
             deferredTabLogged = false;
-            logger.LogInfo("Added Modded beside Ongoing and Replays.");
+            logger.LogInfo($"Added Modded beside Ongoing and Replays from live {source} ({newLength} tabs).");
             return true;
         }
         catch (Exception exception)
@@ -149,6 +167,72 @@ internal static class IntegratedModdedGames
             logger.LogWarning($"Could not add the Modded multiplayer tab yet: {exception.Message}");
             return false;
         }
+    }
+
+    private static bool TryGetVisibleTabLabels(
+        UIHorizontalList list,
+        out List<string> labels,
+        out string source
+    )
+    {
+        labels = new List<string>();
+        source = string.Empty;
+
+        if (list.data != null)
+        {
+            for (int index = 0; index < list.data.Length; index++)
+            {
+                string label = list.data[index];
+                if (string.IsNullOrWhiteSpace(label)) continue;
+                if (list.useDataAsLocalizationKeys)
+                {
+                    string? localized = LocalizationManager.GetTranslation(label);
+                    if (!string.IsNullOrWhiteSpace(localized)) label = localized;
+                }
+                labels.Add(label);
+            }
+            if (labels.Count > 0)
+            {
+                source = "data";
+                return true;
+            }
+        }
+
+        labels.Clear();
+        if (list.keys != null)
+        {
+            for (int index = 0; index < list.keys.Length; index++)
+            {
+                string key = list.keys[index];
+                if (string.IsNullOrWhiteSpace(key)) continue;
+                string? localized = LocalizationManager.GetTranslation(key);
+                string label = string.IsNullOrWhiteSpace(localized) ? key : localized;
+                labels.Add(label);
+            }
+            if (labels.Count > 0)
+            {
+                source = "localization keys";
+                return true;
+            }
+        }
+
+        labels.Clear();
+        if (list.items != null)
+        {
+            for (int index = 0; index < list.items.Length; index++)
+            {
+                UIHorizontalListItem? item = list.items[index];
+                string? label = item?.text;
+                if (!string.IsNullOrWhiteSpace(label)) labels.Add(label);
+            }
+            if (labels.Count > 0)
+            {
+                source = "rendered items";
+                return true;
+            }
+        }
+
+        return false;
     }
 
     internal static void EnsureOwnedTab()
@@ -875,6 +959,25 @@ internal static class ModdedTabSetDataPatch
 {
     [HarmonyPostfix]
     private static void RestoreTabAfterDataChange(UIHorizontalList __instance) =>
+        IntegratedModdedGames.EnsureOwnedTab(__instance);
+}
+
+/// <summary>
+/// Serialized prefab lists may never call SetData. Their localized keys and
+/// rendered items become usable during UIHorizontalList's own enable/create
+/// lifecycle, so recheck the owned Multiplayer list at those exact points.
+/// </summary>
+[HarmonyPatch]
+internal static class ModdedTabListReadyPatch
+{
+    private static IEnumerable<MethodBase> TargetMethods()
+    {
+        yield return AccessTools.Method(typeof(UIHorizontalList), "OnEnable");
+        yield return AccessTools.Method(typeof(UIHorizontalList), "CreateItems");
+    }
+
+    [HarmonyPostfix]
+    private static void AddTabWhenListBecomesUsable(UIHorizontalList __instance) =>
         IntegratedModdedGames.EnsureOwnedTab(__instance);
 }
 
