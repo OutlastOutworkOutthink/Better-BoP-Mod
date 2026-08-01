@@ -21,6 +21,8 @@ internal static class OblivionMode
     private const string SelectedKey = "betterbop.oblivion.v2.selected";
     private const string SeedPrefix = "betterbop.oblivion.v2.seed.";
     private static bool armedForNewGame;
+    private static bool classicUnavailableLogged;
+    private static bool ui2UnavailableLogged;
 
     internal static ManualLogSource Logger { get; set; } = null!;
     internal static bool Selected => PlayerPrefs.GetInt(SelectedKey, 0) == 1;
@@ -74,6 +76,63 @@ internal static class OblivionMode
         return settings != null && settings.BaseGameMode == GameMode.Custom;
     }
 
+    internal static bool EnsureClassicRow(UIHorizontalList? list)
+    {
+        if (!IsCreativeSetup()) return false;
+
+        try
+        {
+            if (list?.data == null || list.ids == null)
+            {
+                if (!classicUnavailableLogged)
+                {
+                    classicUnavailableLogged = true;
+                    Logger.LogWarning(
+                        "Creative setup's legacy game-mode list was unavailable " +
+                        $"(list={list != null}, data={list?.data != null}, ids={list?.ids != null})."
+                    );
+                }
+                return false;
+            }
+
+            for (int index = 0; index < list.data.Length; index++)
+            {
+                if (IsClassicIndex(list, index)) return true;
+            }
+
+            int oldLength = list.data.Length;
+            Il2CppStringArray labels = new(oldLength + 1);
+            Il2CppStructArray<int> ids = new(oldLength + 1);
+            for (int index = 0; index < oldLength; index++)
+            {
+                string label = list.data[index];
+                if (list.useDataAsLocalizationKeys)
+                {
+                    string? localized = LocalizationManager.GetTranslation(label);
+                    if (!string.IsNullOrWhiteSpace(localized)) label = localized;
+                }
+                labels[index] = label;
+                ids[index] = index < list.ids.Length ? list.ids[index] : index;
+            }
+
+            labels[oldLength] = Label;
+            ids[oldLength] = ListId;
+            int selectedIndex = Selected ? oldLength : list.SelectedIndex;
+            if (selectedIndex < 0 || selectedIndex > oldLength) selectedIndex = 0;
+            list.SetData(labels, ids, selectedIndex, false);
+            Logger.LogInfo(
+                $"Added Oblivion directly to the legacy Creative game-mode list " +
+                $"({oldLength} vanilla entries, {oldLength + 1} rendered entries)."
+            );
+            return true;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning($"Could not update the legacy Creative game-mode list: {exception}");
+            return false;
+        }
+    }
+
     internal static bool EnsureRenderedUI2Row(
         GameSetupScreenView view,
         string? header = null,
@@ -87,9 +146,15 @@ internal static class OblivionMode
             UIHorizontalList_UI2? list = view?.listGameMode;
             if (list?.data == null)
             {
-                Logger.LogWarning(
-                    "Creative setup was shown, but its live game-mode list was unavailable."
-                );
+                if (!ui2UnavailableLogged)
+                {
+                    ui2UnavailableLogged = true;
+                    Logger.LogWarning(
+                        "Creative setup's UI2 game-mode list was unavailable " +
+                        $"(view={view != null}, list={view?.listGameMode != null}, " +
+                        $"data={view?.listGameMode?.data != null})."
+                    );
+                }
                 return false;
             }
 
@@ -187,34 +252,34 @@ internal static class OblivionCreativeModeListPatch
     [HarmonyPostfix]
     private static void AddOblivion(ref UIHorizontalList __result)
     {
-        if (__result?.data == null || __result.ids == null) return;
-        for (int index = 0; index < __result.data.Length; index++)
-        {
-            if (OblivionMode.IsClassicIndex(__result, index)) return;
-        }
+        OblivionMode.EnsureClassicRow(__result);
+    }
+}
 
-        int oldLength = __result.data.Length;
-        Il2CppStringArray labels = new(oldLength + 1);
-        Il2CppStructArray<int> ids = new(oldLength + 1);
-        for (int index = 0; index < oldLength; index++)
-        {
-            string label = __result.data[index];
-            if (__result.useDataAsLocalizationKeys)
-            {
-                string localized = LocalizationManager.GetTranslation(label);
-                if (!string.IsNullOrWhiteSpace(localized)) label = localized;
-            }
-            labels[index] = label;
-            ids[index] = __result.ids[index];
-        }
+/// <summary>
+/// Polytopia 122 can create the visible legacy row after UI2.OnShow. Recheck
+/// the actual screen field at each late legacy lifecycle boundary.
+/// </summary>
+[HarmonyPatch]
+internal static class OblivionClassicRenderedRowPatch
+{
+    private static IEnumerable<System.Reflection.MethodBase> TargetMethods()
+    {
+        yield return AccessTools.Method(typeof(GameSetupScreen), nameof(GameSetupScreen.Show));
+        yield return AccessTools.Method(
+            typeof(GameSetupScreen),
+            nameof(GameSetupScreen.OnScreenUpdated)
+        );
+        yield return AccessTools.Method(
+            typeof(GameSetupScreen),
+            nameof(GameSetupScreen.RefreshValuesFromSettings)
+        );
+    }
 
-        labels[oldLength] = OblivionMode.Label;
-        ids[oldLength] = OblivionMode.ListId;
-        int selectedIndex = OblivionMode.Selected ? oldLength : __result.SelectedIndex;
-        // The vanilla entries were localized above. Keeping this false lets the
-        // custom English label render directly instead of being treated as a
-        // missing I2 localization key.
-        __result.SetData(labels, ids, selectedIndex, false);
+    [HarmonyPostfix]
+    private static void AddToVisibleLegacyRow(GameSetupScreen __instance)
+    {
+        OblivionMode.EnsureClassicRow(__instance.gameModeList);
     }
 }
 
@@ -355,6 +420,32 @@ internal static class OblivionGameModeViewFallbackPatch
     )
     {
         OblivionMode.EnsureRenderedUI2Row(__instance, header, selected);
+    }
+}
+
+/// <summary>
+/// OnShow can run before UI2 creates its controls. These layout hooks are the
+/// late boundary at which the view's live game-mode list is finally available.
+/// </summary>
+[HarmonyPatch(typeof(GameSetupScreen_UI2), nameof(GameSetupScreen_UI2.RunLayout))]
+internal static class OblivionLateUI2LayoutPatch
+{
+    [HarmonyPostfix]
+    private static void AddAfterControllerLayout(GameSetupScreen_UI2 __instance)
+    {
+        if (__instance.view?.listGameMode?.data != null)
+            OblivionMode.EnsureRenderedUI2Row(__instance.view);
+    }
+}
+
+[HarmonyPatch(typeof(GameSetupScreenView), nameof(GameSetupScreenView.RunLayout))]
+internal static class OblivionLateViewLayoutPatch
+{
+    [HarmonyPostfix]
+    private static void AddAfterViewLayout(GameSetupScreenView __instance)
+    {
+        if (__instance.listGameMode?.data != null)
+            OblivionMode.EnsureRenderedUI2Row(__instance);
     }
 }
 

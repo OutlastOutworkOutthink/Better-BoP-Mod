@@ -4,7 +4,7 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.5.3 deliberately loads only Oblivion. Older experiments remain in
+/// Alpha 0.5.4 deliberately loads only Oblivion. Older experiments remain in
 /// the repository as archived source, but the project excludes them from the
 /// DLL and this entry point never initializes them.
 /// </summary>
@@ -20,12 +20,15 @@ public static class Main
         OblivionMode.Logger = logger;
 
         SafePatch(typeof(OblivionCreativeModeListPatch), logger);
+        SafePatch(typeof(OblivionClassicRenderedRowPatch), logger);
         SafePatch(typeof(OblivionCreativeModeSelectionPatch), logger);
         SafePatch(typeof(OblivionCreativeModeDescriptionPatch), logger);
         SafePatch(typeof(OblivionMainModeResetPatch), logger);
         SafePatch(typeof(OblivionMainModeResetUI2Patch), logger);
         SafePatch(typeof(OblivionCreativeModeListUI2Patch), logger);
         SafePatch(typeof(OblivionGameModeViewFallbackPatch), logger);
+        SafePatch(typeof(OblivionLateUI2LayoutPatch), logger);
+        SafePatch(typeof(OblivionLateViewLayoutPatch), logger);
         SafePatch(typeof(OblivionCreativeModeSelectionUI2Patch), logger);
         SafePatch(typeof(OblivionNewGameArmPatch), logger);
         SafePatch(typeof(OblivionNewGameReadyPatch), logger);
@@ -34,7 +37,7 @@ public static class Main
         SafePatch(typeof(OblivionEnemyReasonButtonPatch), logger);
         SafePatch(typeof(OblivionEnemyReasonClickPatch), logger);
 
-        logger.LogMessage("Better BoP Alpha 0.5.3 loaded: Oblivion only.");
+        logger.LogMessage("Better BoP Alpha 0.5.4 loaded: Oblivion only.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)

@@ -18,7 +18,7 @@
   </ItemGroup>
 
   <!--
-    Alpha 0.5.3 is intentionally an Oblivion-only build. The files below stay
+    Alpha 0.5.4 is intentionally an Oblivion-only build. The files below stay
     in git as implementation history, but none of their types enter the DLL.
   -->
   <ItemGroup>

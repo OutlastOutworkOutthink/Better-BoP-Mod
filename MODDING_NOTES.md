@@ -20,6 +20,12 @@ the reference assemblies, not that the patched screen executed correctly.
   to `GameSetupScreenView.listGameMode.data` after the vanilla view has rendered.
 - Inputs may be localization keys, so never require the English text
   `Perfection`, `Domination`, or `Infinity` to identify the row.
+- Alpha 0.5.3 logged that Creative was active while
+  `GameSetupScreenView.listGameMode` was still unavailable during `OnShow`.
+  Treat `OnShow` as an early diagnostic only. Recheck the legacy
+  `GameSetupScreen.gameModeList` after `Show`, `OnScreenUpdated`, and
+  `RefreshValuesFromSettings`, and recheck UI2 after its controller/view
+  `RunLayout` callbacks.
 - If only the rendered list can be expanded, intercept selection of its fourth
   `Oblivion` entry before vanilla handles it. Vanilla's model may still contain
   only three items and would otherwise index past the end.
