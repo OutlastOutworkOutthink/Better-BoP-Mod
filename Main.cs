@@ -4,7 +4,7 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.5.11 loads the locked Oblivion and Discord baselines plus one
+/// Alpha 0.5.12 loads the locked Oblivion and Discord baselines plus one
 /// isolated universal peace-treaty feature. Older experiments remain archived.
 /// </summary>
 public static class Main
@@ -67,10 +67,13 @@ public static class Main
         SafePatch(typeof(UniversalPeaceTechTreePatch), logger);
         SafePatch(typeof(UniversalPeaceTechPopupPatch), logger);
         SafePatch(typeof(UniversalPeaceDiplomacyButtonPatch), logger);
+        SafePatch(typeof(UniversalPeaceButtonRegistryResetPatch), logger);
+        SafePatch(typeof(UniversalPeacePointerClickPatch), logger);
+        SafePatch(typeof(UniversalPeaceButtonClickPatch), logger);
         SafePatch(typeof(UniversalPeaceUnavailablePopupPatch), logger);
         SafePatch(typeof(UniversalPeaceAIPreparePatch), logger);
 
-        logger.LogMessage("Better BoP Alpha 0.5.11 loaded: locked Oblivion and Discord plus universal peace treaties.");
+        logger.LogMessage("Better BoP Alpha 0.5.12 loaded: locked Oblivion and Discord plus corrected universal peace UI.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)

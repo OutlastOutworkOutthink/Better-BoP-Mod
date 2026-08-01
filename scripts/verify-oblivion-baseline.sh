@@ -44,6 +44,10 @@ for symbol in \
   UniversalPeaceTechTreePatch \
   UniversalPeaceTechPopupPatch \
   UniversalPeaceDiplomacyButtonPatch \
+  UniversalPeaceButtonRegistry \
+  UniversalPeaceButtonRegistryResetPatch \
+  UniversalPeacePointerClickPatch \
+  UniversalPeaceButtonClickPatch \
   UniversalPeaceUnavailablePopupPatch \
   UniversalPeaceAIPreparePatch
 do

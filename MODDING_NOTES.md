@@ -83,9 +83,14 @@ the reference assemblies, not that the patched screen executed correctly.
   `GetRequiredTech`. A UI-only override is insufficient for bots and command
   validation.
 - `PlayerInfoPopup.CreateDiplomacyActionButton` may retain both action and
-  unavailable callbacks. Mark the peace button active, then suppress only
-  `OnUnavailableDiplomacyCommandClicked` for `PeaceTreatyCommand`. Do not invoke
-  the command again from the warning prefix or it can send twice.
+  unavailable callbacks. `ClearCallbacks`, register one correct peace action,
+  and intercept both `UIButtonBase.OnPointerClick` and `OnButtonClicked` for
+  registered peace buttons. Deduplicate by button pointer plus frame because a
+  physical click can reach both routes. Merely marking the button active leaves
+  the stale Strategy callback alive. Keep the unavailable-popup suppression as
+  a final guard, and do not invoke the command again from it.
+- Identify treaty commands through `CommandBase.GetCommandType()` rather than
+  relying on an IL2CPP managed subtype check in the legacy UI path.
 - Clean the passed `TechData` before both `TechItem.GetUnlockItems` and
   `TechPopupContent.CreateTechDataContent`; these protect cached game data that
   predates the parse postfix.
