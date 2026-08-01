@@ -18,7 +18,7 @@ namespace BetterBoPMod;
 internal static class DiscordAccountLink
 {
     internal const string ApiBaseUrl = "https://polyeconomic-bot-production.up.railway.app";
-    internal const string ModVersion = "0.5.8";
+    internal const string ModVersion = "0.5.9";
     internal const string IntegrationTokenKey = "polyeconomic.integration.token";
     internal const string LinkedAccountIdKey = "polyeconomic.integration.account_id";
 
@@ -33,20 +33,31 @@ internal static class DiscordAccountLink
     private static UIRoundButton_UI2? linkButton;
     private static bool requestInFlight;
     private static bool applyingVisuals;
+    private static bool focusHandlerRegistered;
+    private static int focusRefreshGeneration;
+    private static Il2CppSystem.Action<bool>? focusChangedHandler;
 
     internal static void Initialize(ManualLogSource logSource)
     {
         logger = logSource;
         mainThread = SynchronizationContext.Current;
-    }
-
-    internal static bool InterceptPointerClick(UIRoundButton_UI2 instance)
-    {
-        if (!IsLinkButton(instance)) return true;
-
-        logger.LogMessage("Connect Discord pointer click intercepted by Better BoP.");
-        BeginDiscordLink();
-        return false;
+        if (!focusHandlerRegistered)
+        {
+            try
+            {
+                focusChangedHandler = DelegateSupport.ConvertDelegate<Il2CppSystem.Action<bool>>(
+                    OnApplicationFocusChanged
+                );
+                Application.focusChanged += focusChangedHandler;
+                focusHandlerRegistered = true;
+            }
+            catch (Exception exception)
+            {
+                // Discord linking must never prevent the locked Oblivion
+                // baseline from loading if Unity changes this optional event.
+                logger.LogWarning($"Could not register Discord focus recovery: {exception.Message}");
+            }
+        }
     }
 
     internal static bool InterceptControllerClick(UIButtonBase_UI2 instance)
@@ -80,7 +91,7 @@ internal static class DiscordAccountLink
                 logger.LogInfo($"Created top-right Connect Discord profile button during {lifecycle}.");
             }
 
-            ConfigureButton(profile);
+            ConfigureButton();
         }
         catch (Exception exception)
         {
@@ -108,7 +119,7 @@ internal static class DiscordAccountLink
 
         try
         {
-            ApplyPersistentVisuals();
+            ReassertButtonPosition();
         }
         catch (Exception exception)
         {
@@ -150,11 +161,12 @@ internal static class DiscordAccountLink
         owner = null;
     }
 
-    private static void ConfigureButton(ProfileScreen profile)
+    private static void ConfigureButton()
     {
         if (linkButton == null) return;
 
         TakeClickOwnership();
+        linkButton.SetButtonSize(UIRoundButton_UI2.ButtonSize.ExtraLarge);
         linkButton.Text = CurrentButtonText();
         linkButton.UpdateLabelVisibility();
         linkButton.RunLayout();
@@ -171,31 +183,64 @@ internal static class DiscordAccountLink
             linkButton.SetStyle(IsCurrentAccountLinked()
                 ? UIButtonBase_UI2.ButtonStyle.Complete
                 : UIButtonBase_UI2.ButtonStyle.Delete);
-            linkButton.SetButtonSize(UIRoundButton_UI2.ButtonSize.ExtraLarge);
-
-            // Keep Polytopia's stock circular geometry and reassert the
-            // top-right position after every native layout pass.
-            RectTransform transform = linkButton.rectTransform;
-            transform.anchorMin = Vector2.one;
-            transform.anchorMax = Vector2.one;
-            transform.pivot = Vector2.one;
-            transform.anchoredPosition = new Vector2(-48f, -48f);
-            transform.localScale = Vector3.one;
-            transform.localRotation = Quaternion.identity;
-            transform.SetAsLastSibling();
-            linkButton.gameObject.SetActive(true);
-
-            if (linkButton.bg != null)
-            {
-                linkButton.bg.gameObject.SetActive(true);
-                linkButton.bg.raycastTarget = true;
-            }
-            if (linkButton.outline != null) linkButton.outline.gameObject.SetActive(true);
+            ReassertButtonPosition();
         }
         finally
         {
             applyingVisuals = false;
         }
+    }
+
+    private static void ReassertButtonPosition()
+    {
+        if (linkButton == null) return;
+
+        // Native layout can move custom buttons. Only restore geometry here;
+        // never call SetStyle or SetButtonSize from a layout postfix.
+        RectTransform transform = linkButton.rectTransform;
+        transform.anchorMin = Vector2.one;
+        transform.anchorMax = Vector2.one;
+        transform.pivot = Vector2.one;
+        transform.anchoredPosition = new Vector2(-48f, -48f);
+        transform.localScale = Vector3.one;
+        transform.localRotation = Quaternion.identity;
+        transform.SetAsLastSibling();
+        linkButton.gameObject.SetActive(true);
+
+        if (linkButton.bg != null)
+        {
+            linkButton.bg.gameObject.SetActive(true);
+            linkButton.bg.raycastTarget = true;
+        }
+        if (linkButton.outline != null) linkButton.outline.gameObject.SetActive(true);
+    }
+
+    private static void OnApplicationFocusChanged(bool hasFocus)
+    {
+        if (!hasFocus) return;
+
+        int generation = Interlocked.Increment(ref focusRefreshGeneration);
+        _ = RefreshAfterFocusSettlesAsync(generation);
+    }
+
+    private static async Task RefreshAfterFocusSettlesAsync(int generation)
+    {
+        // Let Unity finish its own focus and canvas work before touching the
+        // profile control. This avoids rebuilding UI during browser return.
+        await Task.Delay(TimeSpan.FromMilliseconds(750)).ConfigureAwait(false);
+        RunOnMainThread(() =>
+        {
+            if (generation != focusRefreshGeneration || !Application.isFocused) return;
+            if (IsCurrentAccountLinked())
+            {
+                requestInFlight = false;
+                SetButtonText("Discord Connected");
+            }
+            else if (!requestInFlight)
+            {
+                SetButtonText("Connect Discord");
+            }
+        });
     }
 
     private static string CurrentButtonText()
@@ -314,20 +359,12 @@ internal static class DiscordAccountLink
                     PlayerPrefs.SetString(IntegrationTokenKey, session.IntegrationToken);
                     PlayerPrefs.SetString(LinkedAccountIdKey, accountId);
                     PlayerPrefs.Save();
-                    SetButtonText("Discord Connected");
-                    ShowPopup(
-                        "Discord Connected",
-                        $"{displayName} is now registered with the PolyEconomic Bot."
-                    );
                     logger.LogMessage($"Discord integration completed for Polytopia account {accountId}.");
+                    if (Application.isFocused) SetButtonText("Discord Connected");
                 }
                 else
                 {
-                    SetButtonText("Connect Discord");
-                    ShowPopup(
-                        "Discord Link Expired",
-                        "The sign-in was not completed in time. Press Connect Discord to try again."
-                    );
+                    if (Application.isFocused) SetButtonText("Connect Discord");
                 }
             });
         }
@@ -336,11 +373,7 @@ internal static class DiscordAccountLink
             logger.LogError($"Discord linking failed: {exception}");
             RunOnMainThread(() =>
             {
-                SetButtonText("Retry Discord");
-                ShowPopup(
-                    "Discord Link Failed",
-                    "The bot could not start Discord sign-in. Check your connection and try again."
-                );
+                if (Application.isFocused) SetButtonText("Retry Discord");
             });
         }
         finally
@@ -587,14 +620,6 @@ internal static class DiscordRoundButtonEnablePatch
     [HarmonyPostfix]
     private static void Postfix(UIRoundButton_UI2 __instance) =>
         DiscordAccountLink.ReassertAfterRoundButtonLayout(__instance);
-}
-
-[HarmonyPatch(typeof(UIRoundButton_UI2), nameof(UIRoundButton_UI2.OnPointerClick))]
-internal static class DiscordPointerClickPatch
-{
-    [HarmonyPrefix]
-    private static bool Prefix(UIRoundButton_UI2 __instance) =>
-        DiscordAccountLink.InterceptPointerClick(__instance);
 }
 
 [HarmonyPatch(typeof(UIButtonBase_UI2), nameof(UIButtonBase_UI2.OnButtonClicked))]

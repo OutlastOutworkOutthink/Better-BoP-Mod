@@ -1,4 +1,4 @@
-# Better Battle of Polytopia Mod — Alpha 0.5.8
+# Better Battle of Polytopia Mod — Alpha 0.5.9
 
 This Alpha keeps the working Oblivion behavior locked and adds one isolated
 feature: Discord registration with the PolyEconomic Bot. All earlier gameplay,
@@ -9,7 +9,7 @@ multiplayer, and experimental UI changes remain inactive.
 Open **Creative**, continue to tribe/game setup, and select **Oblivion** in the
 same rule row as **Perfection**, **Domination**, and **Infinity**.
 
-Alpha 0.5.8 retains both the visible legacy setup row and UI2's later layout
+Alpha 0.5.9 retains both the visible legacy setup row and UI2's later layout
 callbacks, after Polytopia has actually created the game-mode controls.
 
 Oblivion keeps all normal Creative setup choices, but the match itself uses
@@ -40,6 +40,10 @@ independently so one changed game method cannot disable the others. The secure
 URL is also copied to the clipboard before browser handoff
 so it can be pasted manually if Windows blocks the automatic launch.
 
+OAuth completion is saved without rebuilding the profile or opening a popup
+while Polytopia is unfocused. After the browser closes, the mod waits for
+Unity's focus and canvas work to settle before changing the circle to green.
+
 ## Inactive archive
 
 The previous mod source remains in the repository for reference, but is
@@ -48,7 +52,7 @@ explicitly excluded from `BetterBoPMod.dll`. See
 
 ## Install
 
-Download the Alpha 0.5.8 release ZIP, extract it, and place the
+Download the Alpha 0.5.9 release ZIP, extract it, and place the
 `Better-BoP-Mod` folder directly inside Polytopia's `Mods` directory. These files
 must be together at that folder's top level:
 
@@ -64,7 +68,7 @@ converted into Oblivion games.
 The BepInEx log confirms a successful load with:
 
 ```text
-Better BoP Alpha 0.5.8 loaded: locked Oblivion plus resilient Discord account linking.
+Better BoP Alpha 0.5.9 loaded: locked Oblivion plus focus-safe Discord account linking.
 ```
 
 ## Development
