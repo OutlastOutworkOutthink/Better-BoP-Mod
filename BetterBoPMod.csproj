@@ -18,7 +18,7 @@
   </ItemGroup>
 
   <!--
-    Alpha 0.5.9 compiles the locked Oblivion baseline plus the isolated Discord
+    Alpha 0.5.10 compiles the locked Oblivion baseline plus the isolated Discord
     account-link module. The files below stay in git as implementation history,
     but none of their types enter the DLL.
   -->

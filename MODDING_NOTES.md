@@ -64,10 +64,10 @@ the reference assemblies, not that the patched screen executed correctly.
 - OAuth polling finishes while Polytopia is normally unfocused. Persist the
   token/account ID first, do not open a completion popup in that callback, and
   do not force a profile layout while Windows is returning focus to Unity.
-- Subscribe to `Application.focusChanged` through
-  `DelegateSupport.ConvertDelegate<Il2CppSystem.Action<bool>>`. After focus
-  returns, wait briefly for Unity's canvas work to settle before repainting the
-  button from red to green.
+- Do not subscribe a managed/IL2CPP delegate to `Application.focusChanged` from
+  mod startup. Alpha 0.5.9 loaded every patch and then terminated before the
+  Polytopia bootloader began, immediately after registering that new delegate.
+  Let the existing profile lifecycle repaint persisted state instead.
 - A reboot retaining the green state proves `PlayerPrefs` persistence and the
   server-side link succeeded; it does not prove the live focus-return UI path
   was safe. Check the log around `ApplicationFocused False/True` separately.

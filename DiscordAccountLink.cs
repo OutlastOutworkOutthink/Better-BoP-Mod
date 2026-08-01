@@ -18,7 +18,7 @@ namespace BetterBoPMod;
 internal static class DiscordAccountLink
 {
     internal const string ApiBaseUrl = "https://polyeconomic-bot-production.up.railway.app";
-    internal const string ModVersion = "0.5.9";
+    internal const string ModVersion = "0.5.10";
     internal const string IntegrationTokenKey = "polyeconomic.integration.token";
     internal const string LinkedAccountIdKey = "polyeconomic.integration.account_id";
 
@@ -33,31 +33,11 @@ internal static class DiscordAccountLink
     private static UIRoundButton_UI2? linkButton;
     private static bool requestInFlight;
     private static bool applyingVisuals;
-    private static bool focusHandlerRegistered;
-    private static int focusRefreshGeneration;
-    private static Il2CppSystem.Action<bool>? focusChangedHandler;
 
     internal static void Initialize(ManualLogSource logSource)
     {
         logger = logSource;
         mainThread = SynchronizationContext.Current;
-        if (!focusHandlerRegistered)
-        {
-            try
-            {
-                focusChangedHandler = DelegateSupport.ConvertDelegate<Il2CppSystem.Action<bool>>(
-                    OnApplicationFocusChanged
-                );
-                Application.focusChanged += focusChangedHandler;
-                focusHandlerRegistered = true;
-            }
-            catch (Exception exception)
-            {
-                // Discord linking must never prevent the locked Oblivion
-                // baseline from loading if Unity changes this optional event.
-                logger.LogWarning($"Could not register Discord focus recovery: {exception.Message}");
-            }
-        }
     }
 
     internal static bool InterceptControllerClick(UIButtonBase_UI2 instance)
@@ -213,34 +193,6 @@ internal static class DiscordAccountLink
             linkButton.bg.raycastTarget = true;
         }
         if (linkButton.outline != null) linkButton.outline.gameObject.SetActive(true);
-    }
-
-    private static void OnApplicationFocusChanged(bool hasFocus)
-    {
-        if (!hasFocus) return;
-
-        int generation = Interlocked.Increment(ref focusRefreshGeneration);
-        _ = RefreshAfterFocusSettlesAsync(generation);
-    }
-
-    private static async Task RefreshAfterFocusSettlesAsync(int generation)
-    {
-        // Let Unity finish its own focus and canvas work before touching the
-        // profile control. This avoids rebuilding UI during browser return.
-        await Task.Delay(TimeSpan.FromMilliseconds(750)).ConfigureAwait(false);
-        RunOnMainThread(() =>
-        {
-            if (generation != focusRefreshGeneration || !Application.isFocused) return;
-            if (IsCurrentAccountLinked())
-            {
-                requestInFlight = false;
-                SetButtonText("Discord Connected");
-            }
-            else if (!requestInFlight)
-            {
-                SetButtonText("Connect Discord");
-            }
-        });
     }
 
     private static string CurrentButtonText()

@@ -50,4 +50,12 @@ do
   fi
 done
 
+for rejected in DiscordPointerClickPatch OnApplicationFocusChanged RefreshAfterFocusSettlesAsync
+do
+  if strings "$dll" | grep -q "$rejected"; then
+    echo "Release DLL contains rejected compatibility path: $rejected" >&2
+    exit 1
+  fi
+done
+
 echo "Locked Oblivion baseline and isolated Discord account link verified."
