@@ -1,15 +1,15 @@
-# Better Battle of Polytopia Mod — Alpha 0.5.10
+# Better Battle of Polytopia Mod — Alpha 0.5.11
 
-This Alpha keeps the working Oblivion behavior locked and adds one isolated
-feature: Discord registration with the PolyEconomic Bot. All earlier gameplay,
-multiplayer, and experimental UI changes remain inactive.
+This Alpha keeps the working Oblivion and Discord integration behavior locked,
+then adds one isolated gameplay feature: universal peace treaties. All other
+earlier gameplay, multiplayer, and experimental UI changes remain inactive.
 
 ## Oblivion
 
 Open **Creative**, continue to tribe/game setup, and select **Oblivion** in the
 same rule row as **Perfection**, **Domination**, and **Infinity**.
 
-Alpha 0.5.10 retains both the visible legacy setup row and UI2's later layout
+Alpha 0.5.11 retains both the visible legacy setup row and UI2's later layout
 callbacks, after Polytopia has actually created the game-mode controls.
 
 Oblivion keeps all normal Creative setup choices, but the match itself uses
@@ -46,6 +46,18 @@ startup. The already-proven profile lifecycle repaints the circle green when
 the profile refreshes or is reopened; if Polytopia is already focused, it
 updates immediately.
 
+## Universal peace treaties
+
+Peace Treaty is a base ability for every human and bot tribe. It is removed
+from Strategy's unlock list and is shown as available in tribe information even
+before Strategy is researched. Sending a request no longer opens the obsolete
+Strategy warning after the request is sent.
+
+Bot diplomacy uses the same base ability, so bots can consider and send peace
+requests to other bots without Strategy. Their normal opinion and scoring still
+decide whether they actually choose the request. Oblivion remains authoritative:
+bots still reject/remove peace with the local enemy and preserve bot alliances.
+
 ## Inactive archive
 
 The previous mod source remains in the repository for reference, but is
@@ -54,7 +66,7 @@ explicitly excluded from `BetterBoPMod.dll`. See
 
 ## Install
 
-Download the Alpha 0.5.10 release ZIP, extract it, and place the
+Download the Alpha 0.5.11 release ZIP, extract it, and place the
 `Better-BoP-Mod` folder directly inside Polytopia's `Mods` directory. These files
 must be together at that folder's top level:
 
@@ -70,7 +82,7 @@ converted into Oblivion games.
 The BepInEx log confirms a successful load with:
 
 ```text
-Better BoP Alpha 0.5.10 loaded: locked Oblivion plus lifecycle-safe Discord account linking.
+Better BoP Alpha 0.5.11 loaded: locked Oblivion and Discord plus universal peace treaties.
 ```
 
 ## Development

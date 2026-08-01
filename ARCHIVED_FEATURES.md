@@ -1,15 +1,15 @@
-# Archived features — inactive in Alpha 0.5.10
+# Archived features — inactive in Alpha 0.5.11
 
-Alpha 0.5.10 keeps the reset gameplay baseline. Only `Main.cs`,
-`OblivionMode.cs`, `OblivionOpinions.cs`, and the isolated
-`DiscordAccountLink.cs` are compiled as mod behavior.
+Alpha 0.5.11 keeps the reset gameplay baseline. Only `Main.cs`,
+`OblivionMode.cs`, `OblivionOpinions.cs`, `DiscordAccountLink.cs`, and the
+isolated `UniversalPeace.cs` module are compiled as mod behavior.
 
 The following source files are preserved as notes/history but explicitly
 excluded in `BetterBoPMod.csproj`, so they cannot patch or change the game:
 
 | Archived source | Inactive experiments |
 | --- | --- |
-| `BetterBoPRules.cs` | technologies, embassies, peace, Ai-Mo, unit/rule edits |
+| `BetterBoPRules.cs` | technologies, embassies, old peace prototype, Ai-Mo, unit/rule edits |
 | `GiftStars.cs` | star gifting and generous relation behavior |
 | `GrowGiant.cs` | Giant Seed and Grow Giant |
 | `TribeRelations.cs` | respected, hated, dominating, generous, old Oblivion code |

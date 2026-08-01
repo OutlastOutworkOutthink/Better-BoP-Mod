@@ -72,6 +72,27 @@ the reference assemblies, not that the patched screen executed correctly.
   server-side link succeeded; it does not prove the live focus-return UI path
   was safe. Check the log around `ApplicationFocused False/True` separately.
 
+## Universal peace treaties (Polytopia 122 / PolyMod 1.2.17)
+
+- Peace is `PlayerAbility.Type.PeaceTreaty`, normally stored in a visible
+  technology's `abilityUnlocks`. Remove it from every visible tech and attach
+  it to hidden `TechData.Type.Basic`; this removes Strategy's unlock icon while
+  preserving command validation and AI discovery.
+- Cover all native lookup paths: `IsUnlocked(PlayerAbility.Type, PlayerState)`,
+  `HasAbility`, `GetUnlockedAbilities`, and the ability overload of
+  `GetRequiredTech`. A UI-only override is insufficient for bots and command
+  validation.
+- `PlayerInfoPopup.CreateDiplomacyActionButton` may retain both action and
+  unavailable callbacks. Mark the peace button active, then suppress only
+  `OnUnavailableDiplomacyCommandClicked` for `PeaceTreatyCommand`. Do not invoke
+  the command again from the warning prefix or it can send twice.
+- Clean the passed `TechData` before both `TechItem.GetUnlockItems` and
+  `TechPopupContent.CreateTechDataContent`; these protect cached game data that
+  predates the parse postfix.
+- Prepare the base ability before `AI.AddPossibleDiplomacyCommands`. Leave
+  native opinion/scoring intact. Oblivion's last-priority command filter still
+  removes bot-to-human peace and bot-to-bot peace breaking.
+
 ## Verification checklist
 
 1. Build Release with zero warnings and errors.
