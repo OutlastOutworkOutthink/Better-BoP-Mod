@@ -49,6 +49,29 @@ the reference assemblies, not that the patched screen executed correctly.
   `Oblivion` entry before vanilla handles it. Vanilla's model may still contain
   only three items and would otherwise index past the end.
 
+## Discord profile link (Polytopia 122 / PolyMod 1.2.17)
+
+- `UIRoundButton_UI2.OnPointerClick` does not exist in the shipped Polytopia
+  122 IL2CPP metadata. An attributed Harmony patch targeting it logs an
+  undefined-target error during startup. Use the button's native
+  `OnClickedSignal` plus the verified `UIButtonBase_UI2.OnButtonClicked` hook.
+- Treat every optional profile lifecycle hook as an independent Harmony patch.
+  One renamed game method must not prevent the other creation paths from
+  loading.
+- Never call `SetStyle` or `SetButtonSize` from the `RunLayout` postfix. Restore
+  only anchors, position, scale, sibling order, and visibility there; style or
+  size setters can trigger another native layout pass.
+- OAuth polling finishes while Polytopia is normally unfocused. Persist the
+  token/account ID first, do not open a completion popup in that callback, and
+  do not force a profile layout while Windows is returning focus to Unity.
+- Subscribe to `Application.focusChanged` through
+  `DelegateSupport.ConvertDelegate<Il2CppSystem.Action<bool>>`. After focus
+  returns, wait briefly for Unity's canvas work to settle before repainting the
+  button from red to green.
+- A reboot retaining the green state proves `PlayerPrefs` persistence and the
+  server-side link succeeded; it does not prove the live focus-return UI path
+  was safe. Check the log around `ApplicationFocused False/True` separately.
+
 ## Verification checklist
 
 1. Build Release with zero warnings and errors.

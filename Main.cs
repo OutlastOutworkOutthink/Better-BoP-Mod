@@ -4,7 +4,7 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.5.8 loads the locked Oblivion baseline plus the isolated Discord
+/// Alpha 0.5.9 loads the locked Oblivion baseline plus the isolated Discord
 /// account-link control. Older experiments remain archived and excluded.
 /// </summary>
 public static class Main
@@ -56,10 +56,9 @@ public static class Main
         SafePatch(typeof(DiscordUILibraryReadyPatch), logger);
         SafePatch(typeof(DiscordRoundButtonLayoutPatch), logger);
         SafePatch(typeof(DiscordRoundButtonEnablePatch), logger);
-        SafePatch(typeof(DiscordPointerClickPatch), logger);
         SafePatch(typeof(DiscordControllerClickPatch), logger);
 
-        logger.LogMessage("Better BoP Alpha 0.5.8 loaded: locked Oblivion plus resilient Discord account linking.");
+        logger.LogMessage("Better BoP Alpha 0.5.9 loaded: locked Oblivion plus focus-safe Discord account linking.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)

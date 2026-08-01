@@ -34,7 +34,7 @@ for symbol in \
   DiscordProfileEnablePatch \
   DiscordUILibraryReadyPatch \
   DiscordRoundButtonLayoutPatch \
-  DiscordPointerClickPatch
+  DiscordControllerClickPatch
 do
   strings "$dll" | grep -q "$symbol" || {
     echo "Release DLL is missing required symbol: $symbol" >&2
