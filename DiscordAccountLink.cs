@@ -18,7 +18,7 @@ namespace BetterBoPMod;
 internal static class DiscordAccountLink
 {
     internal const string ApiBaseUrl = "https://polyeconomic-bot-production.up.railway.app";
-    internal const string ModVersion = "0.5.10";
+    internal const string ModVersion = "0.5.13";
     internal const string IntegrationTokenKey = "polyeconomic.integration.token";
     internal const string LinkedAccountIdKey = "polyeconomic.integration.account_id";
 
@@ -229,6 +229,17 @@ internal static class DiscordAccountLink
     {
         if (requestInFlight) return;
 
+        if (IsCurrentAccountLinked())
+        {
+            logger.LogInfo("Ignored Discord link request because this Polytopia account is already connected.");
+            SetButtonText("Discord Connected");
+            ShowPopup(
+                "Discord Connected",
+                "This Polytopia account is already connected to Discord. Each account can only be connected once."
+            );
+            return;
+        }
+
         try
         {
             string accountId = AccountManager.PlayerAccountId.ToString();
@@ -283,6 +294,34 @@ internal static class DiscordAccountLink
             string responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
+                LinkErrorResponse? linkError = null;
+                try
+                {
+                    linkError = JsonSerializer.Deserialize<LinkErrorResponse>(responseBody);
+                }
+                catch
+                {
+                    // Preserve the original HTTP diagnostic below when a
+                    // proxy returns a non-JSON error page.
+                }
+
+                if ((int)response.StatusCode == 409 &&
+                    linkError?.Error == "account_already_linked")
+                {
+                    logger.LogInfo($"Server confirmed Polytopia account {accountId} is already connected.");
+                    RunOnMainThread(() =>
+                    {
+                        SetButtonText(IsCurrentAccountLinked()
+                            ? "Discord Connected"
+                            : "Already Connected");
+                        ShowPopup(
+                            "Discord Connected",
+                            "This Polytopia account already has its one Discord connection. No new link or announcement was created."
+                        );
+                    });
+                    return;
+                }
+
                 throw new HttpRequestException(
                     $"Link service returned {(int)response.StatusCode}: {responseBody}"
                 );
@@ -472,6 +511,12 @@ internal static class DiscordAccountLink
 
         [JsonPropertyName("integrationToken")]
         public string IntegrationToken { get; init; } = string.Empty;
+    }
+
+    private sealed class LinkErrorResponse
+    {
+        [JsonPropertyName("error")]
+        public string Error { get; init; } = string.Empty;
     }
 
     private sealed class LinkStatusResponse
