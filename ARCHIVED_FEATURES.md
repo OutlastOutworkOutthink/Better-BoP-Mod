@@ -1,6 +1,6 @@
-# Archived features — inactive in Alpha 0.5.0
+# Archived features — inactive in Alpha 0.5.1
 
-Alpha 0.5.0 is a reset release. Only `Main.cs`, `OblivionMode.cs`, and
+Alpha 0.5.1 keeps the reset baseline. Only `Main.cs`, `OblivionMode.cs`, and
 `OblivionOpinions.cs` are compiled as mod behavior.
 
 The following source files are preserved as notes/history but explicitly

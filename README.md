@@ -1,4 +1,4 @@
-# Better Battle of Polytopia Mod — Alpha 0.5.0
+# Better Battle of Polytopia Mod — Alpha 0.5.1
 
 This is a deliberately clean **Oblivion-only** Alpha. Every earlier gameplay,
 multiplayer, Discord, and experimental UI change has been removed from the
@@ -8,6 +8,9 @@ compiled mod while the project is stabilized.
 
 Open **Creative**, continue to tribe/game setup, and select **Oblivion** in the
 same rule row as **Perfection**, **Domination**, and **Infinity**.
+
+Alpha 0.5.1 targets the current PC `GameSetupScreenView` row directly and also
+keeps controller-level fallbacks for older layouts.
 
 Oblivion keeps all normal Creative setup choices, but the match itself uses
 Polytopia's normal **Domination** victory rules. Its only additional behavior is:
@@ -29,7 +32,7 @@ explicitly excluded from `BetterBoPMod.dll`. See
 
 ## Install
 
-Download the Alpha 0.5.0 release ZIP, extract it, and place the
+Download the Alpha 0.5.1 release ZIP, extract it, and place the
 `Better-BoP-Mod` folder directly inside Polytopia's `Mods` directory. These files
 must be together at that folder's top level:
 
@@ -45,7 +48,7 @@ converted into Oblivion games.
 The BepInEx log confirms a successful load with:
 
 ```text
-Better BoP Alpha 0.5.0 loaded: Oblivion only.
+Better BoP Alpha 0.5.1 loaded: Oblivion only.
 ```
 
 ## Development

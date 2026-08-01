@@ -49,8 +49,52 @@ internal static class OblivionMode
 
     internal static bool IsUI2Index(UIHorizontalListData data, int index)
     {
-        return data != null && index >= 0 && index < data.labels.Count &&
-               string.Equals(data.labels[index], Label, StringComparison.OrdinalIgnoreCase);
+        if (data == null || index < 0) return false;
+        if (index < data.labels.Count &&
+            string.Equals(data.labels[index], Label, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // SetShowGameModes is also patched as a last-resort view fallback. If
+        // that fallback supplied a fourth visual item before the model could be
+        // expanded, index == Count still means the Oblivion choice.
+        return index == data.labels.Count && IsCreativeRuleData(data);
+    }
+
+    internal static bool IsCreativeRuleData(UIHorizontalListData data)
+    {
+        if (data == null || data.labels == null || data.ids == null || data.labels.Count < 3)
+            return false;
+
+        bool perfection = false;
+        bool domination = false;
+        bool infinity = false;
+        for (int index = 0; index < data.ids.Count; index++)
+        {
+            int id = data.ids[index];
+            perfection |= id == (int)GameMode.Perfection;
+            domination |= id == (int)GameMode.Domination;
+            infinity |= id == (int)GameMode.Sandbox;
+        }
+        return perfection && domination && infinity;
+    }
+
+    internal static bool LooksLikeCreativeRuleLabels(
+        Il2CppSystem.Collections.Generic.List<string> labels
+    )
+    {
+        if (labels == null || labels.Count < 3) return false;
+        bool perfection = false;
+        bool domination = false;
+        bool infinity = false;
+        foreach (string label in labels)
+        {
+            if (string.IsNullOrWhiteSpace(label)) continue;
+            perfection |= label.Contains("perfection", StringComparison.OrdinalIgnoreCase);
+            domination |= label.Contains("domination", StringComparison.OrdinalIgnoreCase);
+            infinity |= label.Contains("infinity", StringComparison.OrdinalIgnoreCase) ||
+                        label.Contains("sandbox", StringComparison.OrdinalIgnoreCase);
+        }
+        return perfection && domination && infinity;
     }
 
     internal static void ArmForNewGame()
@@ -179,9 +223,8 @@ internal static class OblivionCreativeModeListUI2Patch
     [HarmonyPostfix]
     private static void AddOblivion(GameSetupScreen_UI2 __instance)
     {
-        if (GameManager.instance?.settings?.BaseGameMode != GameMode.Custom) return;
         UIHorizontalListData data = __instance.gameModeData;
-        if (data == null || !data.HasData()) return;
+        if (data == null || !data.HasData() || !OblivionMode.IsCreativeRuleData(data)) return;
 
         for (int index = 0; index < data.labels.Count; index++)
         {
@@ -194,10 +237,40 @@ internal static class OblivionCreativeModeListUI2Patch
             ? data.labels.Count - 1
             : data.IndexFromId(data.selectedObject);
         __instance.view.SetShowGameModes(data.header, data.GetLabels(), selectedIndex);
+        OblivionMode.Logger.LogInfo("Added Oblivion to the UI2 Creative game-mode row.");
         if (!OblivionMode.Selected) return;
 
         OblivionMode.ConfigureDominationRules();
         __instance.view.SetShowGameModeDescriptionText(OblivionMode.Description);
+    }
+}
+
+/// <summary>
+/// The current PC layout renders the exact row through GameSetupScreenView.
+/// This fallback patches that final boundary, so future changes in the setup
+/// controller cannot silently hide Oblivion again.
+/// </summary>
+[HarmonyPatch(typeof(GameSetupScreenView), nameof(GameSetupScreenView.SetShowGameModes))]
+internal static class OblivionGameModeViewFallbackPatch
+{
+    [HarmonyPrefix]
+    private static void AddOblivionToRenderedRow(
+        ref Il2CppSystem.Collections.Generic.List<string> labels,
+        ref int selected
+    )
+    {
+        if (!OblivionMode.LooksLikeCreativeRuleLabels(labels)) return;
+        foreach (string label in labels)
+        {
+            if (string.Equals(label, OblivionMode.Label, StringComparison.OrdinalIgnoreCase)) return;
+        }
+
+        Il2CppSystem.Collections.Generic.List<string> expanded = new();
+        foreach (string label in labels) expanded.Add(label);
+        expanded.Add(OblivionMode.Label);
+        labels = expanded;
+        if (OblivionMode.Selected) selected = expanded.Count - 1;
+        OblivionMode.Logger.LogInfo("Added Oblivion at the live GameSetupScreenView boundary.");
     }
 }
 
