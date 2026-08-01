@@ -1,4 +1,4 @@
-# Better Battle of Polytopia Mod — Alpha 0.5.11
+# Better Battle of Polytopia Mod — Alpha 0.5.12
 
 This Alpha keeps the working Oblivion and Discord integration behavior locked,
 then adds one isolated gameplay feature: universal peace treaties. All other
@@ -9,7 +9,7 @@ earlier gameplay, multiplayer, and experimental UI changes remain inactive.
 Open **Creative**, continue to tribe/game setup, and select **Oblivion** in the
 same rule row as **Perfection**, **Domination**, and **Infinity**.
 
-Alpha 0.5.11 retains both the visible legacy setup row and UI2's later layout
+Alpha 0.5.12 retains both the visible legacy setup row and UI2's later layout
 callbacks, after Polytopia has actually created the game-mode controls.
 
 Oblivion keeps all normal Creative setup choices, but the match itself uses
@@ -53,6 +53,10 @@ from Strategy's unlock list and is shown as available in tribe information even
 before Strategy is researched. Sending a request no longer opens the obsolete
 Strategy warning after the request is sent.
 
+Alpha 0.5.12 also replaces the legacy tribe-info button's separate enabled and
+disabled callbacks with one deduplicated peace action. The icon therefore uses
+its available appearance and a click cannot also reach the old Strategy popup.
+
 Bot diplomacy uses the same base ability, so bots can consider and send peace
 requests to other bots without Strategy. Their normal opinion and scoring still
 decide whether they actually choose the request. Oblivion remains authoritative:
@@ -66,7 +70,7 @@ explicitly excluded from `BetterBoPMod.dll`. See
 
 ## Install
 
-Download the Alpha 0.5.11 release ZIP, extract it, and place the
+Download the Alpha 0.5.12 release ZIP, extract it, and place the
 `Better-BoP-Mod` folder directly inside Polytopia's `Mods` directory. These files
 must be together at that folder's top level:
 
@@ -82,7 +86,7 @@ converted into Oblivion games.
 The BepInEx log confirms a successful load with:
 
 ```text
-Better BoP Alpha 0.5.11 loaded: locked Oblivion and Discord plus universal peace treaties.
+Better BoP Alpha 0.5.12 loaded: locked Oblivion and Discord plus corrected universal peace UI.
 ```
 
 ## Development
