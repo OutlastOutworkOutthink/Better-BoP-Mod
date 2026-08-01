@@ -26,6 +26,14 @@ the reference assemblies, not that the patched screen executed correctly.
   `GameSetupScreen.gameModeList` after `Show`, `OnScreenUpdated`, and
   `RefreshValuesFromSettings`, and recheck UI2 after its controller/view
   `RunLayout` callbacks.
+- A visible Oblivion menu does not prove the game seed was activated. Arm from
+  both setup-screen start callbacks as well as `CreateSinglePlayerGame`, keep
+  the arm flag set until `GameState` exists, and persist at both `OnGameReady`
+  and `OnLevelLoaded`.
+- Oblivion relationships are invariants, not additive modifiers: return exactly
+  `-200` for a bot observing the local human and exactly `+200` for a bot
+  observing another bot. Apply this at last priority so difficulty and normal
+  boons cannot override it.
 - If only the rendered list can be expanded, intercept selection of its fourth
   `Oblivion` entry before vanilla handles it. Vanilla's model may still contain
   only three items and would otherwise index past the end.

@@ -221,19 +221,27 @@ internal static class OblivionMode
     internal static void ArmForNewGame()
     {
         armedForNewGame = Selected;
-        if (armedForNewGame) ConfigureDominationRules();
+        if (!armedForNewGame) return;
+        ConfigureDominationRules();
+        Logger.LogInfo("Oblivion armed for the next single-player game.");
     }
 
     internal static void MarkNewGameReady()
     {
         if (!armedForNewGame) return;
-        armedForNewGame = false;
 
         GameState state = GameManager.GameState;
-        if (state == null) return;
+        if (state == null)
+        {
+            Logger.LogWarning(
+                "Oblivion is armed, but GameState is not ready yet; waiting for the next load boundary."
+            );
+            return;
+        }
 
         PlayerPrefs.SetInt(SeedKey(state.Seed), 1);
         PlayerPrefs.Save();
+        armedForNewGame = false;
         foreach (PlayerState player in state.PlayerStates) player.MarkOpinionsDirty();
         Logger.LogMessage($"Oblivion activated with Domination rules for seed {state.Seed}.");
     }
@@ -480,9 +488,42 @@ internal static class OblivionNewGameArmPatch
     private static void ArmSelectedMode() => OblivionMode.ArmForNewGame();
 }
 
-[HarmonyPatch(typeof(GameManager), nameof(GameManager.OnGameReady))]
+/// <summary>
+/// Both setup implementations can bypass GameManager.CreateSinglePlayerGame's
+/// public wrapper. Arm at their concrete start callbacks as well.
+/// </summary>
+[HarmonyPatch]
+internal static class OblivionSetupStartArmPatch
+{
+    private static IEnumerable<System.Reflection.MethodBase> TargetMethods()
+    {
+        yield return AccessTools.Method(
+            typeof(GameSetupScreen),
+            nameof(GameSetupScreen.OnStartGameClicked)
+        );
+        yield return AccessTools.Method(
+            typeof(GameSetupScreen),
+            nameof(GameSetupScreen.OnStartGameClickedAndFaded)
+        );
+        yield return AccessTools.Method(
+            typeof(GameSetupScreen_UI2),
+            nameof(GameSetupScreen_UI2.OnContinueClicked_StartSingleplayerGame)
+        );
+    }
+
+    [HarmonyPrefix]
+    private static void ArmFromSetupScreen() => OblivionMode.ArmForNewGame();
+}
+
+[HarmonyPatch]
 internal static class OblivionNewGameReadyPatch
 {
+    private static IEnumerable<System.Reflection.MethodBase> TargetMethods()
+    {
+        yield return AccessTools.Method(typeof(GameManager), nameof(GameManager.OnGameReady));
+        yield return AccessTools.Method(typeof(GameManager), nameof(GameManager.OnLevelLoaded));
+    }
+
     [HarmonyPostfix]
     private static void PersistOblivionGame() => OblivionMode.MarkNewGameReady();
 }
