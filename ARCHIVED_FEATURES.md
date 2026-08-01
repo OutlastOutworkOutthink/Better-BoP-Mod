@@ -1,6 +1,6 @@
-# Archived features — inactive in Alpha 0.5.2
+# Archived features — inactive in Alpha 0.5.3
 
-Alpha 0.5.2 keeps the reset baseline. Only `Main.cs`, `OblivionMode.cs`, and
+Alpha 0.5.3 keeps the reset baseline. Only `Main.cs`, `OblivionMode.cs`, and
 `OblivionOpinions.cs` are compiled as mod behavior.
 
 The following source files are preserved as notes/history but explicitly

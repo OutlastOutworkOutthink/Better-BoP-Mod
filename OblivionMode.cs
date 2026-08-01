@@ -68,6 +68,73 @@ internal static class OblivionMode
                string.Equals(labels[index], Label, StringComparison.OrdinalIgnoreCase);
     }
 
+    internal static bool IsCreativeSetup()
+    {
+        GameSettings? settings = GameManager.instance?.settings;
+        return settings != null && settings.BaseGameMode == GameMode.Custom;
+    }
+
+    internal static bool EnsureRenderedUI2Row(
+        GameSetupScreenView view,
+        string? header = null,
+        int? requestedSelection = null
+    )
+    {
+        if (!IsCreativeSetup()) return false;
+
+        try
+        {
+            UIHorizontalList_UI2? list = view?.listGameMode;
+            if (list?.data == null)
+            {
+                Logger.LogWarning(
+                    "Creative setup was shown, but its live game-mode list was unavailable."
+                );
+                return false;
+            }
+
+            Il2CppSystem.Collections.Generic.List<string> current = list.data;
+            for (int index = 0; index < current.Count; index++)
+            {
+                if (string.Equals(current[index], Label, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            if (current.Count == 0)
+            {
+                Logger.LogWarning("Creative setup's live game-mode list contained no entries.");
+                return false;
+            }
+
+            Il2CppSystem.Collections.Generic.List<string> expanded = new();
+            foreach (string label in current) expanded.Add(label);
+            expanded.Add(Label);
+
+            string? renderedHeader = header;
+            if (string.IsNullOrWhiteSpace(renderedHeader)) renderedHeader = list.header?.text;
+            string safeHeader = string.IsNullOrWhiteSpace(renderedHeader)
+                ? "Game Mode"
+                : renderedHeader;
+
+            int selected = Selected
+                ? expanded.Count - 1
+                : requestedSelection ?? list.SelectedIndex;
+            if (selected < 0 || selected >= expanded.Count) selected = 0;
+
+            list.SetData(safeHeader, expanded, selected);
+            Logger.LogInfo(
+                $"Added Oblivion directly to the live Creative game-mode list " +
+                $"({current.Count} vanilla entries, {expanded.Count} rendered entries)."
+            );
+            return true;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning($"Could not update the live Creative game-mode list: {exception}");
+            return false;
+        }
+    }
+
     internal static bool IsCreativeRuleData(UIHorizontalListData data)
     {
         if (data == null || data.labels == null || data.ids == null || data.labels.Count < 3)
@@ -84,17 +151,6 @@ internal static class OblivionMode
             infinity |= id == (int)GameMode.Sandbox;
         }
         return perfection && domination && infinity;
-    }
-
-    internal static bool IsUnexpandedCreativeRuleRow(
-        Il2CppSystem.Collections.Generic.List<string> labels
-    )
-    {
-        // This patch runs only at GameSetupScreenView.SetShowGameModes, so a
-        // three-item row is the vanilla Creative Perfection / Domination /
-        // Infinity row. Do not inspect the strings: this boundary may receive
-        // localization keys rather than rendered English labels.
-        return labels != null && labels.Count == 3;
     }
 
     internal static void ArmForNewGame()
@@ -223,30 +279,53 @@ internal static class OblivionCreativeModeListUI2Patch
     [HarmonyPostfix]
     private static void AddOblivion(GameSetupScreen_UI2 __instance)
     {
+        if (!OblivionMode.IsCreativeSetup())
+        {
+            GameSettings? settings = GameManager.instance?.settings;
+            OblivionMode.Logger.LogInfo(
+                $"Game setup shown without Creative base mode " +
+                $"(base={settings?.BaseGameMode}, rules={settings?.RulesGameMode}); " +
+                "Oblivion was not added."
+            );
+            return;
+        }
+
         try
         {
             UIHorizontalListData data = __instance.gameModeData;
             // UIHorizontalListData.HasData() dereferences partially initialized
             // IL2CPP fields during OnShow in Polytopia 122. Inspect only fields
             // that have completed initialization instead.
-            if (data == null || !OblivionMode.IsCreativeRuleData(data)) return;
-
-            for (int index = 0; index < data.labels.Count; index++)
+            if (data != null && OblivionMode.IsCreativeRuleData(data))
             {
-                if (OblivionMode.IsUI2Index(data, index)) return;
+                bool alreadyPresent = false;
+                for (int index = 0; index < data.labels.Count; index++)
+                {
+                    if (!OblivionMode.IsUI2Index(data, index)) continue;
+                    alreadyPresent = true;
+                    break;
+                }
+
+                if (!alreadyPresent)
+                {
+                    data.AddItem(OblivionMode.Label, OblivionMode.ListId);
+                    __instance.gameModeData = data;
+                    int selectedIndex = OblivionMode.Selected
+                        ? data.labels.Count - 1
+                        : data.IndexFromId(data.selectedObject);
+                    __instance.view.SetShowGameModes(data.header, data.GetLabels(), selectedIndex);
+                    OblivionMode.Logger.LogInfo(
+                        "Added Oblivion to the complete UI2 Creative game-mode model."
+                    );
+                }
             }
 
-            data.AddItem(OblivionMode.Label, OblivionMode.ListId);
-            __instance.gameModeData = data;
-            int selectedIndex = OblivionMode.Selected
-                ? data.labels.Count - 1
-                : data.IndexFromId(data.selectedObject);
-            __instance.view.SetShowGameModes(data.header, data.GetLabels(), selectedIndex);
-            OblivionMode.Logger.LogInfo("Added Oblivion to the UI2 Creative game-mode row.");
-            if (!OblivionMode.Selected) return;
-
-            OblivionMode.ConfigureDominationRules();
-            __instance.view.SetShowGameModeDescriptionText(OblivionMode.Description);
+            OblivionMode.EnsureRenderedUI2Row(__instance.view);
+            if (OblivionMode.Selected)
+            {
+                OblivionMode.ConfigureDominationRules();
+                __instance.view.SetShowGameModeDescriptionText(OblivionMode.Description);
+            }
         }
         catch (Exception exception)
         {
@@ -255,6 +334,7 @@ internal static class OblivionCreativeModeListUI2Patch
             OblivionMode.Logger.LogWarning(
                 $"Controller game-mode insertion was unavailable; using view fallback: {exception}"
             );
+            OblivionMode.EnsureRenderedUI2Row(__instance.view);
         }
     }
 }
@@ -267,24 +347,14 @@ internal static class OblivionCreativeModeListUI2Patch
 [HarmonyPatch(typeof(GameSetupScreenView), nameof(GameSetupScreenView.SetShowGameModes))]
 internal static class OblivionGameModeViewFallbackPatch
 {
-    [HarmonyPrefix]
+    [HarmonyPostfix]
     private static void AddOblivionToRenderedRow(
-        ref Il2CppSystem.Collections.Generic.List<string> labels,
-        ref int selected
+        GameSetupScreenView __instance,
+        string header,
+        int selected
     )
     {
-        if (!OblivionMode.IsUnexpandedCreativeRuleRow(labels)) return;
-        foreach (string label in labels)
-        {
-            if (string.Equals(label, OblivionMode.Label, StringComparison.OrdinalIgnoreCase)) return;
-        }
-
-        Il2CppSystem.Collections.Generic.List<string> expanded = new();
-        foreach (string label in labels) expanded.Add(label);
-        expanded.Add(OblivionMode.Label);
-        labels = expanded;
-        if (OblivionMode.Selected) selected = expanded.Count - 1;
-        OblivionMode.Logger.LogInfo("Added Oblivion at the live GameSetupScreenView boundary.");
+        OblivionMode.EnsureRenderedUI2Row(__instance, header, selected);
     }
 }
 

@@ -14,10 +14,12 @@ the reference assemblies, not that the patched screen executed correctly.
   aborted the Oblivion insertion.
 - Check `labels` and `ids` individually before reading them. Wrap optional UI
   enhancement patches so a failed insertion cannot break the setup screen.
-- At the final `SetShowGameModes` boundary, the normal Creative row contains
-  exactly three entries. Use that structure instead of matching English text:
-  inputs may be localization keys, so looking for `Perfection`, `Domination`,
-  and `Infinity` can silently miss the correct row.
+- Alpha 0.5.2 showed that neither model IDs nor the incoming label count are a
+  reliable detection boundary: the mod loaded without error, but neither
+  insertion path ran. Gate on `GameSettings.BaseGameMode == Custom`, then append
+  to `GameSetupScreenView.listGameMode.data` after the vanilla view has rendered.
+- Inputs may be localization keys, so never require the English text
+  `Perfection`, `Domination`, or `Infinity` to identify the row.
 - If only the rendered list can be expanded, intercept selection of its fourth
   `Oblivion` entry before vanilla handles it. Vanilla's model may still contain
   only three items and would otherwise index past the end.
