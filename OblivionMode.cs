@@ -1,4 +1,6 @@
+using BepInEx.Logging;
 using HarmonyLib;
+using I2.Loc;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using PolytopiaBackendBase.Game;
 using UnityEngine;
@@ -6,38 +8,69 @@ using UnityEngine;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Oblivion runs on Polytopia's Creative/Sandbox rules, adding only Better
-/// BoP's opinion behavior. The chosen state is recorded against the generated
-/// seed so local saves resume in the same mode without changing map settings.
+/// Adds Oblivion to Creative's Perfection / Domination / Infinity row. The
+/// custom label is local UI state; actual games use Domination victory rules.
 /// </summary>
 internal static class OblivionMode
 {
     internal const string Label = "Oblivion";
-    internal const string Description = "All bot tribes are united. They strongly support every other bot and regard you as the enemy.";
-    private const string SelectedKey = "bbp.oblivion.selected";
-    private const string SeedPrefix = "bbp.oblivion.game.";
+    internal const string Description =
+        "Play with Domination rules while every bot unites against you.";
+    internal const int ListId = 0x0B110;
+
+    private const string SelectedKey = "betterbop.oblivion.v2.selected";
+    private const string SeedPrefix = "betterbop.oblivion.v2.seed.";
     private static bool armedForNewGame;
 
+    internal static ManualLogSource Logger { get; set; } = null!;
     internal static bool Selected => PlayerPrefs.GetInt(SelectedKey, 0) == 1;
 
     internal static void SetSelected(bool selected)
     {
         PlayerPrefs.SetInt(SelectedKey, selected ? 1 : 0);
         PlayerPrefs.Save();
+        if (selected) ConfigureDominationRules();
     }
 
-    internal static void ArmForNewGame() => armedForNewGame = Selected;
+    internal static void ConfigureDominationRules()
+    {
+        GameSettings? settings = GameManager.instance?.settings;
+        if (settings == null) return;
+        settings.BaseGameMode = GameMode.Custom;
+        settings.RulesGameMode = GameMode.Domination;
+    }
+
+    internal static bool IsClassicIndex(UIHorizontalList list, int index)
+    {
+        if (list?.data == null || index < 0 || index >= list.data.Length) return false;
+        if (string.Equals(list.data[index], Label, StringComparison.OrdinalIgnoreCase)) return true;
+        return list.ids != null && index < list.ids.Length && list.ids[index] == ListId;
+    }
+
+    internal static bool IsUI2Index(UIHorizontalListData data, int index)
+    {
+        return data != null && index >= 0 && index < data.labels.Count &&
+               string.Equals(data.labels[index], Label, StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static void ArmForNewGame()
+    {
+        armedForNewGame = Selected;
+        if (armedForNewGame) ConfigureDominationRules();
+    }
 
     internal static void MarkNewGameReady()
     {
         if (!armedForNewGame) return;
         armedForNewGame = false;
+
         GameState state = GameManager.GameState;
         if (state == null) return;
+
         PlayerPrefs.SetInt(SeedKey(state.Seed), 1);
         PlayerPrefs.Save();
         foreach (PlayerState player in state.PlayerStates) player.MarkOpinionsDirty();
-        BetterBoPRules.Logger.LogInfo($"Activated Oblivion for Creative game seed {state.Seed}.");
+        Logger.LogMessage($"Oblivion activated with Domination rules for seed {state.Seed}.");
     }
 
     internal static bool IsActive(GameState state)
@@ -46,24 +79,18 @@ internal static class OblivionMode
     }
 
     private static string SeedKey(int seed) => $"{SeedPrefix}{seed}";
-
-    internal static bool IsOblivionIndex(UIHorizontalList list, int index)
-    {
-        return list != null && list.data != null && index >= 0 && index < list.data.Length &&
-            string.Equals(list.data[index], Label, StringComparison.OrdinalIgnoreCase);
-    }
 }
 
 [HarmonyPatch(typeof(GameSetupScreen), nameof(GameSetupScreen.CreateCustomGameModeList))]
 internal static class OblivionCreativeModeListPatch
 {
     [HarmonyPostfix]
-    private static void AddOblivionToCreative(ref UIHorizontalList __result)
+    private static void AddOblivion(ref UIHorizontalList __result)
     {
-        if (__result == null || __result.data == null || __result.ids == null) return;
+        if (__result?.data == null || __result.ids == null) return;
         for (int index = 0; index < __result.data.Length; index++)
         {
-            if (string.Equals(__result.data[index], OblivionMode.Label, StringComparison.OrdinalIgnoreCase)) return;
+            if (OblivionMode.IsClassicIndex(__result, index)) return;
         }
 
         int oldLength = __result.data.Length;
@@ -71,15 +98,23 @@ internal static class OblivionCreativeModeListPatch
         Il2CppStructArray<int> ids = new(oldLength + 1);
         for (int index = 0; index < oldLength; index++)
         {
-            labels[index] = __result.data[index];
+            string label = __result.data[index];
+            if (__result.useDataAsLocalizationKeys)
+            {
+                string localized = LocalizationManager.GetTranslation(label);
+                if (!string.IsNullOrWhiteSpace(localized)) label = localized;
+            }
+            labels[index] = label;
             ids[index] = __result.ids[index];
         }
+
         labels[oldLength] = OblivionMode.Label;
-        // Run the standard Creative/Sandbox victory rules. Oblivion changes AI
-        // opinions only, leaving every map and setup option untouched.
-        ids[oldLength] = (int)GameMode.Sandbox;
-        int selected = OblivionMode.Selected ? oldLength : __result.SelectedIndex;
-        __result.SetData(labels, ids, selected, __result.useDataAsLocalizationKeys);
+        ids[oldLength] = OblivionMode.ListId;
+        int selectedIndex = OblivionMode.Selected ? oldLength : __result.SelectedIndex;
+        // The vanilla entries were localized above. Keeping this false lets the
+        // custom English label render directly instead of being treated as a
+        // missing I2 localization key.
+        __result.SetData(labels, ids, selectedIndex, false);
     }
 }
 
@@ -87,20 +122,19 @@ internal static class OblivionCreativeModeListPatch
 internal static class OblivionCreativeModeSelectionPatch
 {
     [HarmonyPrefix]
-    private static bool SelectOblivionWithoutUsingVanillaIndex(GameSetupScreen __instance, int index)
+    private static bool SelectOblivion(GameSetupScreen __instance, int index)
     {
-        if (!OblivionMode.IsOblivionIndex(__instance.gameModeList, index)) return true;
+        if (!OblivionMode.IsClassicIndex(__instance.gameModeList, index)) return true;
         OblivionMode.SetSelected(true);
-        GameManager.instance.settings.RulesGameMode = GameMode.Sandbox;
         __instance.RefreshInfo();
         return false;
     }
 
     [HarmonyPostfix]
-    private static void RememberOblivionSelection(GameSetupScreen __instance, int index)
+    private static void ClearWhenAnotherRuleIsSelected(GameSetupScreen __instance, int index)
     {
-        if (OblivionMode.IsOblivionIndex(__instance.gameModeList, index)) return;
-        OblivionMode.SetSelected(false);
+        if (!OblivionMode.IsClassicIndex(__instance.gameModeList, index))
+            OblivionMode.SetSelected(false);
     }
 }
 
@@ -108,9 +142,10 @@ internal static class OblivionCreativeModeSelectionPatch
 internal static class OblivionCreativeModeDescriptionPatch
 {
     [HarmonyPostfix]
-    private static void ShowOblivionDescription(GameSetupScreen __instance)
+    private static void ShowDescription(GameSetupScreen __instance)
     {
         if (!OblivionMode.Selected || __instance.gameModeInfoRow == null) return;
+        OblivionMode.ConfigureDominationRules();
         __instance.gameModeInfoRow.Text = OblivionMode.Description;
     }
 }
@@ -119,33 +154,50 @@ internal static class OblivionCreativeModeDescriptionPatch
 internal static class OblivionMainModeResetPatch
 {
     [HarmonyPrefix]
-    private static void ClearOblivionOutsideCreative(GameMode gameMode)
+    private static void ClearOutsideCreative(GameMode gameMode)
     {
         if (gameMode != GameMode.Custom) OblivionMode.SetSelected(false);
     }
 }
 
-// UI2 is used on newer layouts. It receives the same fourth Creative choice
-// while the classic screen above remains compatible with the current build.
+[HarmonyPatch]
+internal static class OblivionMainModeResetUI2Patch
+{
+    private static IEnumerable<System.Reflection.MethodBase> TargetMethods()
+    {
+        yield return AccessTools.Method(typeof(GameModeScreen_UI2), nameof(GameModeScreen_UI2.OnPerfection));
+        yield return AccessTools.Method(typeof(GameModeScreen_UI2), nameof(GameModeScreen_UI2.OnDomination));
+    }
+
+    [HarmonyPrefix]
+    private static void ClearOutsideCreative() => OblivionMode.SetSelected(false);
+}
+
 [HarmonyPatch(typeof(GameSetupScreen_UI2), nameof(GameSetupScreen_UI2.OnShow))]
 internal static class OblivionCreativeModeListUI2Patch
 {
     [HarmonyPostfix]
-    private static void AddOblivionToCreative(GameSetupScreen_UI2 __instance)
+    private static void AddOblivion(GameSetupScreen_UI2 __instance)
     {
-        if (GameManager.instance.settings.BaseGameMode != GameMode.Custom) return;
+        if (GameManager.instance?.settings?.BaseGameMode != GameMode.Custom) return;
         UIHorizontalListData data = __instance.gameModeData;
         if (data == null || !data.HasData()) return;
+
         for (int index = 0; index < data.labels.Count; index++)
         {
-            if (string.Equals(data.labels[index], OblivionMode.Label, StringComparison.OrdinalIgnoreCase)) return;
+            if (OblivionMode.IsUI2Index(data, index)) return;
         }
 
-        data.AddItem(OblivionMode.Label, (int)GameMode.Sandbox);
+        data.AddItem(OblivionMode.Label, OblivionMode.ListId);
         __instance.gameModeData = data;
-        int selected = OblivionMode.Selected ? data.labels.Count - 1 : data.IndexFromId(data.selectedObject);
-        __instance.view.SetShowGameModes(data.header, data.GetLabels(), selected);
-        if (OblivionMode.Selected) __instance.view.SetShowGameModeDescriptionText(OblivionMode.Description);
+        int selectedIndex = OblivionMode.Selected
+            ? data.labels.Count - 1
+            : data.IndexFromId(data.selectedObject);
+        __instance.view.SetShowGameModes(data.header, data.GetLabels(), selectedIndex);
+        if (!OblivionMode.Selected) return;
+
+        OblivionMode.ConfigureDominationRules();
+        __instance.view.SetShowGameModeDescriptionText(OblivionMode.Description);
     }
 }
 
@@ -153,25 +205,19 @@ internal static class OblivionCreativeModeListUI2Patch
 internal static class OblivionCreativeModeSelectionUI2Patch
 {
     [HarmonyPrefix]
-    private static bool SelectOblivionWithoutUsingVanillaIndex(GameSetupScreen_UI2 __instance, int index)
+    private static bool SelectOblivion(GameSetupScreen_UI2 __instance, int index)
     {
-        UIHorizontalListData data = __instance.gameModeData;
-        bool selected = data != null && index >= 0 && index < data.labels.Count &&
-            string.Equals(data.labels[index], OblivionMode.Label, StringComparison.OrdinalIgnoreCase);
-        if (!selected) return true;
+        if (!OblivionMode.IsUI2Index(__instance.gameModeData, index)) return true;
         OblivionMode.SetSelected(true);
-        GameManager.instance.settings.RulesGameMode = GameMode.Sandbox;
         __instance.view.SetShowGameModeDescriptionText(OblivionMode.Description);
         return false;
     }
 
     [HarmonyPostfix]
-    private static void RememberOblivionSelection(GameSetupScreen_UI2 __instance, int index)
+    private static void ClearWhenAnotherRuleIsSelected(GameSetupScreen_UI2 __instance, int index)
     {
-        UIHorizontalListData data = __instance.gameModeData;
-        bool selected = data != null && index >= 0 && index < data.labels.Count &&
-            string.Equals(data.labels[index], OblivionMode.Label, StringComparison.OrdinalIgnoreCase);
-        if (!selected) OblivionMode.SetSelected(false);
+        if (!OblivionMode.IsUI2Index(__instance.gameModeData, index))
+            OblivionMode.SetSelected(false);
     }
 }
 
@@ -179,18 +225,12 @@ internal static class OblivionCreativeModeSelectionUI2Patch
 internal static class OblivionNewGameArmPatch
 {
     [HarmonyPrefix]
-    private static void ArmSelectedMode()
-    {
-        OblivionMode.ArmForNewGame();
-    }
+    private static void ArmSelectedMode() => OblivionMode.ArmForNewGame();
 }
 
 [HarmonyPatch(typeof(GameManager), nameof(GameManager.OnGameReady))]
 internal static class OblivionNewGameReadyPatch
 {
     [HarmonyPostfix]
-    private static void PersistOblivionGame()
-    {
-        OblivionMode.MarkNewGameReady();
-    }
+    private static void PersistOblivionGame() => OblivionMode.MarkNewGameReady();
 }

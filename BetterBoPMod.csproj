@@ -16,4 +16,18 @@
   <ItemGroup>
     <PackageReference Include="PolyMod" Version="1.2.17" />
   </ItemGroup>
+
+  <!--
+    Alpha 0.5.0 is intentionally an Oblivion-only build. The files below stay
+    in git as implementation history, but none of their types enter the DLL.
+  -->
+  <ItemGroup>
+    <Compile Remove="BetterBoPRules.cs" />
+    <Compile Remove="DiscordIntegration.cs" />
+    <Compile Remove="GiftStars.cs" />
+    <Compile Remove="GrowGiant.cs" />
+    <Compile Remove="IntegratedMultiplayer.cs" />
+    <Compile Remove="MultiplayerRestrictions.cs" />
+    <Compile Remove="TribeRelations.cs" />
+  </ItemGroup>
 </Project>
