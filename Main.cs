@@ -4,7 +4,7 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.5.7 loads the locked Oblivion baseline plus the isolated Discord
+/// Alpha 0.5.8 loads the locked Oblivion baseline plus the isolated Discord
 /// account-link control. Older experiments remain archived and excluded.
 /// </summary>
 public static class Main
@@ -45,9 +45,21 @@ public static class Main
         SafePatch(typeof(OblivionEnemyReasonButtonPatch), logger);
         SafePatch(typeof(OblivionEnemyReasonClickPatch), logger);
 
-        SafePatch(typeof(DiscordAccountLink), logger);
+        SafePatch(typeof(DiscordProfileStartPatch), logger);
+        SafePatch(typeof(DiscordProfileEnablePatch), logger);
+        SafePatch(typeof(DiscordProfileValuesPatch), logger);
+        SafePatch(typeof(DiscordProfileScreenUpdatedPatch), logger);
+        SafePatch(typeof(DiscordProfileRefreshUserPatch), logger);
+        SafePatch(typeof(DiscordProfileLanguagePatch), logger);
+        SafePatch(typeof(DiscordProfileSubscribePatch), logger);
+        SafePatch(typeof(DiscordProfileRefreshPatch), logger);
+        SafePatch(typeof(DiscordUILibraryReadyPatch), logger);
+        SafePatch(typeof(DiscordRoundButtonLayoutPatch), logger);
+        SafePatch(typeof(DiscordRoundButtonEnablePatch), logger);
+        SafePatch(typeof(DiscordPointerClickPatch), logger);
+        SafePatch(typeof(DiscordControllerClickPatch), logger);
 
-        logger.LogMessage("Better BoP Alpha 0.5.7 loaded: locked Oblivion plus Discord account linking.");
+        logger.LogMessage("Better BoP Alpha 0.5.8 loaded: locked Oblivion plus resilient Discord account linking.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)
@@ -55,11 +67,11 @@ public static class Main
         try
         {
             Harmony.CreateAndPatchAll(patchType);
-            logger.LogInfo($"Loaded Oblivion patch: {patchType.Name}");
+            logger.LogInfo($"Loaded Better BoP patch: {patchType.Name}");
         }
         catch (Exception exception)
         {
-            logger.LogError($"Could not load Oblivion patch {patchType.Name}: {exception}");
+            logger.LogError($"Could not load Better BoP patch {patchType.Name}: {exception}");
         }
     }
 }
