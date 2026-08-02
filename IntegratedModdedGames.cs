@@ -367,8 +367,15 @@ internal static class IntegratedModdedGames
             RequestRender();
             return;
         }
+        ListReuseHelper.Guard? refresh = null;
         try
         {
+            // MultiplayerScreen's stock row helpers are backed by
+            // ListReuseHelper. ClearList only clears the visible collections;
+            // AddInfoRow/AddButtonRow still require an active refresh guard.
+            // Alpha 0.5.18 rendered on the correct Unity thread but omitted
+            // this guard, so every active match failed before its first row.
+            if (!screen.listReuse.isRefreshing) refresh = screen.listReuse.BeginRefresh();
             screen.ClearList();
 
             AccountLinkState linkState = CurrentAccountLinkState();
@@ -407,11 +414,12 @@ internal static class IntegratedModdedGames
             IntegratedMatch[] visible = matches.Where(match => match.Status != "cancelled").ToArray();
             if (visible.Length == 0)
             {
-                AddInfo(screen, "You have no active modded games.", "Create one in Discord with ?open Classic Integrated, then have another connected player join and both accept.");
+                AddInfo(screen, "You have no active modded games.", "Create one in Discord with ?open Classic Integrated, then have another connected player join. The game is created automatically.");
                 screen.AddButtonRow("Refresh", Click(() => _ = RefreshMatchesAsync(true)));
                 return;
             }
 
+            logger.LogDebug($"Rendering {visible.Length} Modded match row(s): {string.Join(", ", visible.Select(match => $"G{match.BotGameId}={match.Status}"))}");
             foreach (IntegratedMatch match in visible)
             {
                 RenderMatch(screen, match);
@@ -424,6 +432,14 @@ internal static class IntegratedModdedGames
         }
         finally
         {
+            try
+            {
+                refresh?.Dispose();
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning($"Could not finish the Modded list refresh: {exception.Message}");
+            }
             try
             {
                 if (screen.container != null)
@@ -444,7 +460,7 @@ internal static class IntegratedModdedGames
         int? opponentTribe = match.Role == "host" ? match.AwayTribe : match.HostTribe;
         string status = match.Status switch
         {
-            "awaiting_acceptance" => "Accept in Discord",
+            "awaiting_acceptance" => "Preparing game",
             "waiting_for_tribes" => "Choosing tribes",
             "ready_to_start" => match.Role == "host" ? "Ready for you to host" : "Waiting for host",
             "provisioning" => "Host is creating the game",

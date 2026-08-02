@@ -116,16 +116,17 @@ the reference assemblies, not that the patched screen executed correctly.
 6. In game, inspect the BepInEx log for both the Alpha load line and the
    `Added Oblivion ...` insertion line before treating the UI as verified.
 
-## Integrated Modded games (Alpha 0.5.18)
+## Integrated Modded games (Alpha 0.5.19)
 
 - Keep the Discord link permanent and version-independent. Compatibility is
   established by `/v1/auth/exchange` from the running client; never require a
   player to recreate OAuth just because the mod version changed.
-- Discord acceptance and in-game tribe selection are separate state-machine
-  steps: `awaiting_acceptance` → `waiting_for_tribes` → `ready_to_start` →
-  `provisioning` → `active` → `completed|disputed`.
-- The server creates the lobby/game record after both Discord accepts, but only
-  the immutable host may leave `ready_to_start`. Both tribe IDs must be present.
+- Discord joining provisions the server match and channel immediately. Tribe
+  selection is the confirmation: `waiting_for_tribes` → `ready_to_start` →
+  `provisioning` → `active` → `completed|disputed`. Keep automatic recovery for
+  legacy `awaiting_acceptance` rows so an older joined game is never stranded.
+- Only the immutable host may leave `ready_to_start`. Both tribe IDs must be
+  present before the host can create the Tiny Dryland game state.
 - Add Modded by extending `MultiplayerSelectionScreen.ScreenSelectionList` and
   render rows through the stock `MultiplayerScreen`. Do not alter the Ongoing or
   Replays models, and restore the stock New Game button when leaving Modded.
@@ -147,6 +148,11 @@ the reference assemblies, not that the patched screen executed correctly.
   IL2CPP UI or game state from an async continuation. Queue it and drain from
   the verified `GameManager.Update` main-thread boundary; clear pending renders
   when the multiplayer selection screen disables.
+- Alpha 0.5.18 proved that reaching the Unity main thread is necessary but not
+  sufficient. `MultiplayerScreen.AddInfoRow` and `AddButtonRow` use
+  `ListReuseHelper`; wrap the entire custom clear/build pass in
+  `listReuse.BeginRefresh()` unless a vanilla refresh is already active. The
+  guard must be disposed after all custom rows have been added.
 - A saved Discord link is version-independent and requires both the account ID
   and integration token. Treat a partial/mismatched pair as repairable, prompt
   once when Modded opens, and invalidate both local credentials only after the

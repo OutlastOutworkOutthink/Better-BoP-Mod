@@ -4,8 +4,8 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.5.18 keeps the locked gameplay baselines and adds recoverable
-/// Discord identity plus a complete Modded multiplayer empty state.
+/// Alpha 0.5.19 keeps the locked gameplay baselines and fixes stock-list
+/// rendering for automatically created Integrated Modded games.
 /// </summary>
 public static class Main
 {
@@ -87,7 +87,7 @@ public static class Main
         SafePatch(typeof(UniversalPeaceUnavailablePopupPatch), logger);
         SafePatch(typeof(UniversalPeaceAIPreparePatch), logger);
 
-        logger.LogMessage("Better BoP Alpha 0.5.18 loaded: locked gameplay baselines plus recoverable Integrated Modded games.");
+        logger.LogMessage("Better BoP Alpha 0.5.19 loaded: locked gameplay baselines plus automatically created Integrated Modded games.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)
