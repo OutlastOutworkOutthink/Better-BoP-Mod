@@ -116,7 +116,7 @@ the reference assemblies, not that the patched screen executed correctly.
 6. In game, inspect the BepInEx log for both the Alpha load line and the
    `Added Oblivion ...` insertion line before treating the UI as verified.
 
-## Integrated Modded games (Alpha 0.5.17)
+## Integrated Modded games (Alpha 0.5.18)
 
 - Keep the Discord link permanent and version-independent. Compatibility is
   established by `/v1/auth/exchange` from the running client; never require a
@@ -147,6 +147,12 @@ the reference assemblies, not that the patched screen executed correctly.
   IL2CPP UI or game state from an async continuation. Queue it and drain from
   the verified `GameManager.Update` main-thread boundary; clear pending renders
   when the multiplayer selection screen disables.
+- A saved Discord link is version-independent and requires both the account ID
+  and integration token. Treat a partial/mismatched pair as repairable, prompt
+  once when Modded opens, and invalidate both local credentials only after the
+  auth exchange explicitly returns 401/403. The OAuth callback may rotate the
+  token only for the exact existing Discord/Polytopia pair and must not announce
+  recovery as a new integration.
 - Opening a Modded game is explicit. Background polling updates the list and
   command stream but must not unexpectedly load a scene from the main menu.
 - Retry transient `MatchEnded` result failures in memory, then clear the active

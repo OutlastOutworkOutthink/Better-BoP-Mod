@@ -54,6 +54,8 @@ internal static class IntegratedModdedGames
     private static int nextCommandIndex;
     private static bool active;
     private static bool deferredTabLogged;
+    private static bool connectionPromptShown;
+    private static bool reconnectRequired;
     private static int mainThreadId;
     private static int renderRequested;
 
@@ -67,15 +69,35 @@ internal static class IntegratedModdedGames
         _ = PollLoopAsync(polling.Token);
     }
 
-    private static bool HasCurrentAccountLink()
+    private enum AccountLinkState
+    {
+        Connected,
+        Missing,
+        NeedsRepair,
+    }
+
+    private static AccountLinkState CurrentAccountLinkState()
     {
         string token = UnityEngine.PlayerPrefs.GetString(DiscordAccountLink.IntegrationTokenKey, string.Empty);
         string linkedAccount = UnityEngine.PlayerPrefs.GetString(DiscordAccountLink.LinkedAccountIdKey, string.Empty);
         string currentAccount = AccountManager.PlayerAccountId.ToString();
-        return !string.IsNullOrWhiteSpace(token) &&
-               !string.IsNullOrWhiteSpace(linkedAccount) &&
-               string.Equals(linkedAccount, currentAccount, StringComparison.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(token) &&
+            !string.IsNullOrWhiteSpace(linkedAccount) &&
+            string.Equals(linkedAccount, currentAccount, StringComparison.OrdinalIgnoreCase))
+        {
+            reconnectRequired = false;
+            return AccountLinkState.Connected;
+        }
+
+        if (reconnectRequired ||
+            !string.IsNullOrWhiteSpace(token) ||
+            !string.IsNullOrWhiteSpace(linkedAccount))
+            return AccountLinkState.NeedsRepair;
+
+        return AccountLinkState.Missing;
     }
+
+    private static bool HasCurrentAccountLink() => CurrentAccountLinkState() == AccountLinkState.Connected;
 
     private static async Task PollLoopAsync(CancellationToken cancellationToken)
     {
@@ -267,13 +289,16 @@ internal static class IntegratedModdedGames
         if (!IsModdedIndex(screen.ScreenSelectionList, index))
         {
             selected = false;
+            connectionPromptShown = false;
             Interlocked.Exchange(ref renderRequested, 0);
-            if (screen.NewGameButton != null) screen.NewGameButton.gameObject.SetActive(true);
+            SetModdedNavigation(screen, false);
             return true;
         }
 
+        bool enteringModded = !selected;
         selected = true;
-        if (screen.NewGameButton != null) screen.NewGameButton.gameObject.SetActive(false);
+        if (enteringModded) connectionPromptShown = false;
+        SetModdedNavigation(screen, true);
         screen.replayScreen?.Hide();
         screen.multiplayerScreen?.Show(true);
         RequestRender();
@@ -285,7 +310,15 @@ internal static class IntegratedModdedGames
     {
         if (owner == null || owner.Pointer != screen.Pointer) return;
         selected = false;
+        connectionPromptShown = false;
+        SetModdedNavigation(screen, false);
         Interlocked.Exchange(ref renderRequested, 0);
+    }
+
+    private static void SetModdedNavigation(MultiplayerSelectionScreen screen, bool modded)
+    {
+        if (screen.NewGameButton != null) screen.NewGameButton.gameObject.SetActive(!modded);
+        if (screen.TournamentsButton != null) screen.TournamentsButton.gameObject.SetActive(!modded);
     }
 
     internal static bool AllowVanillaListBuild(MultiplayerScreen screen)
@@ -338,9 +371,25 @@ internal static class IntegratedModdedGames
         {
             screen.ClearList();
 
-            if (!HasCurrentAccountLink())
+            AccountLinkState linkState = CurrentAccountLinkState();
+            if (linkState != AccountLinkState.Connected)
             {
-                AddInfo(screen, "Connect Discord first", "Open your profile and use Connect Discord before opening or joining ?open Classic Integrated.");
+                bool reconnect = linkState == AccountLinkState.NeedsRepair;
+                AddInfo(
+                    screen,
+                    reconnect ? "Reconnect Discord to use Modded games" : "Connect Discord to use Modded games",
+                    "Open Profile and press Connect Discord, then return to this tab."
+                );
+                if (!connectionPromptShown)
+                {
+                    connectionPromptShown = true;
+                    DiscordAccountLink.ShowConnectionPrompt(
+                        reconnect,
+                        reconnect
+                            ? "This Polytopia profile's saved Discord connection is incomplete or could not be verified."
+                            : "This Polytopia profile is not connected to Discord yet."
+                    );
+                }
                 return;
             }
             if (loading && matches.Length == 0)
@@ -358,7 +407,7 @@ internal static class IntegratedModdedGames
             IntegratedMatch[] visible = matches.Where(match => match.Status != "cancelled").ToArray();
             if (visible.Length == 0)
             {
-                AddInfo(screen, "No ongoing Modded games", "Create one in Discord with ?open Classic Integrated, then have another connected player join and both accept.");
+                AddInfo(screen, "You have no active modded games.", "Create one in Discord with ?open Classic Integrated, then have another connected player join and both accept.");
                 screen.AddButtonRow("Refresh", Click(() => _ = RefreshMatchesAsync(true)));
                 return;
             }
@@ -372,6 +421,18 @@ internal static class IntegratedModdedGames
         catch (Exception exception)
         {
             logger.LogError($"Could not render Modded games: {exception}");
+        }
+        finally
+        {
+            try
+            {
+                if (screen.container != null)
+                    UnityEngine.UI.LayoutRebuilder.ForceRebuildLayoutImmediate(screen.container);
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning($"Could not rebuild the Modded list layout: {exception.Message}");
+            }
         }
     }
 
@@ -426,8 +487,17 @@ internal static class IntegratedModdedGames
     private static void AddInfo(MultiplayerScreen screen, string header, string description)
     {
         MultiplayerInfoRow row = screen.AddInfoRow();
-        if (row.header != null) row.header.text = header;
-        if (row.description != null) row.description.text = description;
+        row.gameObject.SetActive(true);
+        if (row.header != null)
+        {
+            row.header.gameObject.SetActive(true);
+            row.header.text = header;
+        }
+        if (row.description != null)
+        {
+            row.description.gameObject.SetActive(true);
+            row.description.text = description;
+        }
     }
 
     private static UIButtonBase.ButtonAction Click(Action action)
@@ -599,6 +669,11 @@ internal static class IntegratedModdedGames
             new StringContent(json, Encoding.UTF8, "application/json")
         ).ConfigureAwait(false);
         string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
+        {
+            await InvalidateDiscordConnectionAsync().ConfigureAwait(false);
+            throw new InvalidOperationException("The saved Discord connection could not be verified. Reconnect Discord from Profile.");
+        }
         if (!response.IsSuccessStatusCode) throw new HttpRequestException(ServerMessage(response, body));
         AuthResponse? auth = JsonSerializer.Deserialize<AuthResponse>(body);
         if (string.IsNullOrWhiteSpace(auth?.Token)) throw new InvalidOperationException("Server sign-in returned no token.");
@@ -609,6 +684,24 @@ internal static class IntegratedModdedGames
             return true;
         }).ConfigureAwait(false);
         return auth.Token;
+    }
+
+    private static async Task InvalidateDiscordConnectionAsync()
+    {
+        await RunOnMainThreadAsync(() =>
+        {
+            UnityEngine.PlayerPrefs.DeleteKey(ServerTokenKey);
+            UnityEngine.PlayerPrefs.DeleteKey(DiscordAccountLink.IntegrationTokenKey);
+            UnityEngine.PlayerPrefs.DeleteKey(DiscordAccountLink.LinkedAccountIdKey);
+            UnityEngine.PlayerPrefs.Save();
+            reconnectRequired = true;
+            connectionPromptShown = true;
+            DiscordAccountLink.ShowConnectionPrompt(
+                true,
+                "The multiplayer server rejected this profile's saved Discord credential."
+            );
+            return true;
+        }).ConfigureAwait(false);
     }
 
     private static HttpRequestMessage AuthorizedRequest(HttpMethod method, string path, string token, string? json = null)

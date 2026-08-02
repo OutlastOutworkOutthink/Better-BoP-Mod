@@ -1,4 +1,4 @@
-# Better Battle of Polytopia Mod — Alpha 0.5.17
+# Better Battle of Polytopia Mod — Alpha 0.5.18
 
 This Alpha keeps the working Oblivion, Discord integration, and universal-peace
 behavior locked, then adds the isolated client for bot-created Modded games.
@@ -9,7 +9,7 @@ All other earlier gameplay and experimental UI changes remain inactive.
 Open **Creative**, continue to tribe/game setup, and select **Oblivion** in the
 same rule row as **Perfection**, **Domination**, and **Infinity**.
 
-Alpha 0.5.17 retains both the visible legacy setup row and UI2's later layout
+Alpha 0.5.18 retains both the visible legacy setup row and UI2's later layout
 callbacks, after Polytopia has actually created the game-mode controls.
 
 Oblivion keeps all normal Creative setup choices, but the match itself uses
@@ -46,11 +46,12 @@ startup. The already-proven profile lifecycle repaints the circle green when
 the profile refreshes or is reopened; if Polytopia is already focused, it
 updates immediately.
 
-Each Polytopia profile can complete this connection once. Pressing the green
-**Discord Connected** control reports that the account is already linked and
-does not open OAuth. The server independently refuses a second link session,
-so an older client or repeated browser callback cannot create another account
-link or player-updates announcement.
+Each Polytopia profile still owns one permanent Discord identity. A healthy
+connection made by an older Alpha—including 0.5.8—carries forward without a new
+OAuth login. If the local credential is missing, mismatched, or rejected, the
+Modded tab prompts the player to reconnect. OAuth may then rotate the credential
+only after proving the exact original Discord/Polytopia pair; it never creates
+a second link or another player-updates announcement.
 
 ## Universal peace treaties
 
@@ -59,7 +60,7 @@ from Strategy's unlock list and is shown as available in tribe information even
 before Strategy is researched. Sending a request no longer opens the obsolete
 Strategy warning after the request is sent.
 
-Alpha 0.5.17 retains the legacy tribe-info fix that replaces separate enabled and
+Alpha 0.5.18 retains the legacy tribe-info fix that replaces separate enabled and
 disabled callbacks with one deduplicated peace action. The icon therefore uses
 its available appearance and a click cannot also reach the old Strategy popup.
 
@@ -75,15 +76,19 @@ connected player can join it. After both accept in Discord, open Multiplayer in
 Polytopia and select the new **Modded** tab beside **Ongoing** and **Replays**.
 
 Both players select a tribe there. The Discord opener is permanently the host
-and receives the Start button once both tribes are selected. Alpha 0.5.17 creates
+and receives the Start button once both tribes are selected. Alpha 0.5.18 creates
 a two-player **Tiny Dryland Domination** game; Integrated games are unranked.
 The private Better BoP server stores the initial state and ordered command bytes,
 then reports an agreed in-game winner to the bot after resignation or capital
 capture. It does not collect a Polytopia or Steam password.
 
-The permanent Discord link is identity only. Alpha 0.5.17 separately proves its
+The permanent Discord link is identity only. Alpha 0.5.18 separately proves its
 current compatible ruleset to the multiplayer server, so players do not need to
 relink Discord for every future release.
+
+When no match is active, the tab displays **You have no active modded games.**
+The Tournaments bubble is hidden while Modded is selected and restored when the
+player returns to Ongoing/Replays or leaves Multiplayer.
 
 ## Inactive archive
 
@@ -93,7 +98,7 @@ explicitly excluded from `BetterBoPMod.dll`. See
 
 ## Install
 
-Download the Alpha 0.5.17 release ZIP, extract it, and place the
+Download the Alpha 0.5.18 release ZIP, extract it, and place the
 `Better-BoP-Mod` folder directly inside Polytopia's `Mods` directory. These files
 must be together at that folder's top level:
 
@@ -109,7 +114,7 @@ converted into Oblivion games.
 The BepInEx log confirms a successful load with:
 
 ```text
-Better BoP Alpha 0.5.17 loaded: locked gameplay baselines plus main-thread Integrated Modded games.
+Better BoP Alpha 0.5.18 loaded: locked gameplay baselines plus recoverable Integrated Modded games.
 ```
 
 ## Development
