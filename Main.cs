@@ -4,8 +4,8 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.5.19 keeps the locked gameplay baselines and fixes stock-list
-/// rendering for automatically created Integrated Modded games.
+/// Alpha 0.5.20 keeps the locked gameplay baselines and bootstraps the stock
+/// list helper before rendering automatically created Integrated games.
 /// </summary>
 public static class Main
 {
@@ -87,7 +87,7 @@ public static class Main
         SafePatch(typeof(UniversalPeaceUnavailablePopupPatch), logger);
         SafePatch(typeof(UniversalPeaceAIPreparePatch), logger);
 
-        logger.LogMessage("Better BoP Alpha 0.5.19 loaded: locked gameplay baselines plus automatically created Integrated Modded games.");
+        logger.LogMessage("Better BoP Alpha 0.5.20 loaded: locked gameplay baselines plus resilient Integrated Modded list initialization.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)
