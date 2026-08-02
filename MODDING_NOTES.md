@@ -116,7 +116,7 @@ the reference assemblies, not that the patched screen executed correctly.
 6. In game, inspect the BepInEx log for both the Alpha load line and the
    `Added Oblivion ...` insertion line before treating the UI as verified.
 
-## Integrated Modded games (Alpha 0.5.19)
+## Integrated Modded games (Alpha 0.5.20)
 
 - Keep the Discord link permanent and version-independent. Compatibility is
   established by `/v1/auth/exchange` from the running client; never require a
@@ -153,6 +153,10 @@ the reference assemblies, not that the patched screen executed correctly.
   `ListReuseHelper`; wrap the entire custom clear/build pass in
   `listReuse.BeginRefresh()` unless a vanilla refresh is already active. The
   guard must be disposed after all custom rows have been added.
+- Alpha 0.5.19 then proved the helper itself can still be null when the custom
+  tab suppresses `BuildListAsync` before the stock list's first build. Once the
+  stock container and row prefabs exist, construct `ListReuseHelper` from that
+  container, assign it back to the screen, and only then begin the refresh.
 - A saved Discord link is version-independent and requires both the account ID
   and integration token. Treat a partial/mismatched pair as repairable, prompt
   once when Modded opens, and invalidate both local credentials only after the

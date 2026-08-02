@@ -58,6 +58,8 @@ internal static class IntegratedModdedGames
     private static bool reconnectRequired;
     private static int mainThreadId;
     private static int renderRequested;
+    private static bool listReuseBootstrapLogged;
+    private static string lastRenderSummary = string.Empty;
 
     internal static bool Active => active;
 
@@ -375,7 +377,33 @@ internal static class IntegratedModdedGames
             // AddInfoRow/AddButtonRow still require an active refresh guard.
             // Alpha 0.5.18 rendered on the correct Unity thread but omitted
             // this guard, so every active match failed before its first row.
-            if (!screen.listReuse.isRefreshing) refresh = screen.listReuse.BeginRefresh();
+            // Some multiplayer-screen instances have already finished OnEnable
+            // before the stock list is built. Because Modded suppresses that
+            // stock build, its ListReuseHelper can still be null here. Create
+            // the same helper against the stock container instead of touching
+            // a null field or waiting for a vanilla build that will not run.
+            if (screen.container == null || screen.infoRowPrefab == null || screen.buttonRowPrefab == null)
+            {
+                if (!listReuseBootstrapLogged)
+                {
+                    listReuseBootstrapLogged = true;
+                    logger.LogInfo(
+                        "Modded list render deferred until the multiplayer container and row prefabs are ready."
+                    );
+                }
+                RequestRender();
+                return;
+            }
+
+            ListReuseHelper? listReuse = screen.listReuse;
+            if (listReuse == null)
+            {
+                listReuse = new ListReuseHelper(screen.container);
+                screen.listReuse = listReuse;
+                logger.LogInfo("Initialized the Modded list reuse helper from the stock multiplayer container.");
+            }
+            listReuseBootstrapLogged = false;
+            if (!listReuse.isRefreshing) refresh = listReuse.BeginRefresh();
             screen.ClearList();
 
             AccountLinkState linkState = CurrentAccountLinkState();
@@ -419,7 +447,12 @@ internal static class IntegratedModdedGames
                 return;
             }
 
-            logger.LogDebug($"Rendering {visible.Length} Modded match row(s): {string.Join(", ", visible.Select(match => $"G{match.BotGameId}={match.Status}"))}");
+            string renderSummary = string.Join(", ", visible.Select(match => $"G{match.BotGameId}={match.Status}"));
+            if (!string.Equals(renderSummary, lastRenderSummary, StringComparison.Ordinal))
+            {
+                lastRenderSummary = renderSummary;
+                logger.LogInfo($"Rendering {visible.Length} Modded match row(s): {renderSummary}");
+            }
             foreach (IntegratedMatch match in visible)
             {
                 RenderMatch(screen, match);
