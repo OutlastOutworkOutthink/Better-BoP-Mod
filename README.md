@@ -1,4 +1,4 @@
-# Better Battle of Polytopia Mod — Alpha 0.5.20
+# Better Battle of Polytopia Mod — Alpha 0.5.21
 
 This Alpha keeps the working Oblivion, Discord integration, and universal-peace
 behavior locked, then adds the isolated client for bot-created Modded games.
@@ -9,7 +9,7 @@ All other earlier gameplay and experimental UI changes remain inactive.
 Open **Creative**, continue to tribe/game setup, and select **Oblivion** in the
 same rule row as **Perfection**, **Domination**, and **Infinity**.
 
-Alpha 0.5.20 retains both the visible legacy setup row and UI2's later layout
+Alpha 0.5.21 retains both the visible legacy setup row and UI2's later layout
 callbacks, after Polytopia has actually created the game-mode controls.
 
 Oblivion keeps all normal Creative setup choices, but the match itself uses
@@ -60,7 +60,7 @@ from Strategy's unlock list and is shown as available in tribe information even
 before Strategy is researched. Sending a request no longer opens the obsolete
 Strategy warning after the request is sent.
 
-Alpha 0.5.20 retains the legacy tribe-info fix that replaces separate enabled and
+Alpha 0.5.21 retains the legacy tribe-info fix that replaces separate enabled and
 disabled callbacks with one deduplicated peace action. The icon therefore uses
 its available appearance and a click cannot also reach the old Strategy popup.
 
@@ -76,14 +76,17 @@ connected player can join it. Joining automatically creates the Discord channel
 and server game—there is no separate Discord confirmation. Open Multiplayer in
 Polytopia and select the new **Modded** tab beside **Ongoing** and **Replays**.
 
-Both players select a tribe there. The Discord opener is permanently the host
-and receives the Start button once both tribes are selected. Alpha 0.5.20 creates
-a two-player **Tiny Dryland Domination** game; Integrated games are unranked.
+Each match uses Polytopia's native blue lobby row, lobby information popup, and
+tribe picker. The Discord opener is permanently the host. As soon as both
+players select a tribe, Alpha 0.5.21 automatically invokes Polytopia's stock map
+generator and opens a real two-player **Tiny Dryland Domination** game for both
+players. There is no separate Start button or Discord confirmation; Integrated
+games remain unranked.
 The private Better BoP server stores the initial state and ordered command bytes,
 then reports an agreed in-game winner to the bot after resignation or capital
 capture. It does not collect a Polytopia or Steam password.
 
-The permanent Discord link is identity only. Alpha 0.5.20 separately proves its
+The permanent Discord link is identity only. Alpha 0.5.21 separately proves its
 current compatible ruleset to the multiplayer server, so players do not need to
 relink Discord for every future release.
 
@@ -99,7 +102,7 @@ explicitly excluded from `BetterBoPMod.dll`. See
 
 ## Install
 
-Download the Alpha 0.5.20 release ZIP, extract it, and place the
+Download the Alpha 0.5.21 release ZIP, extract it, and place the
 `Better-BoP-Mod` folder directly inside Polytopia's `Mods` directory. These files
 must be together at that folder's top level:
 
@@ -115,7 +118,7 @@ converted into Oblivion games.
 The BepInEx log confirms a successful load with:
 
 ```text
-Better BoP Alpha 0.5.20 loaded: locked gameplay baselines plus resilient Integrated Modded list initialization.
+Better BoP Alpha 0.5.21 loaded: native Integrated lobbies plus automatic stock Tiny Dryland map generation.
 ```
 
 ## Development

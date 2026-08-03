@@ -116,17 +116,27 @@ the reference assemblies, not that the patched screen executed correctly.
 6. In game, inspect the BepInEx log for both the Alpha load line and the
    `Added Oblivion ...` insertion line before treating the UI as verified.
 
-## Integrated Modded games (Alpha 0.5.20)
+## Integrated Modded games (Alpha 0.5.21)
 
 - Keep the Discord link permanent and version-independent. Compatibility is
   established by `/v1/auth/exchange` from the running client; never require a
   player to recreate OAuth just because the mod version changed.
 - Discord joining provisions the server match and channel immediately. Tribe
-  selection is the confirmation: `waiting_for_tribes` → `ready_to_start` →
-  `provisioning` → `active` → `completed|disputed`. Keep automatic recovery for
-  legacy `awaiting_acceptance` rows so an older joined game is never stranded.
-- Only the immutable host may leave `ready_to_start`. Both tribe IDs must be
-  present before the host can create the Tiny Dryland game state.
+  selection is the confirmation: new matches go `waiting_for_tribes` →
+  `provisioning` as soon as both tribes exist, then `active` →
+  `completed|disputed`. Keep `/start` and `ready_to_start` support only as
+  recovery for older clients/rows; no player-facing Start step remains.
+- Only the immutable host generates and uploads the initial game state. Before
+  upload, require `CreateSessionResult.Success`, two players, non-zero map
+  dimensions, and a non-empty tile array. A failed upload must retry the same
+  in-memory session instead of generating a second map.
+- Render server matches as synthetic `LobbyGameViewModel` objects through
+  `MultiplayerScreen.AddLobbyRow`. This reuses Polytopia's blue row, LobbyPopup,
+  map/mode/timer/more-info controls, and player slots. Intercept lobby start,
+  invite, and leave actions so synthetic lobbies never call Midjiwan's backend.
+- Open the stock `TribeSelectorScreen` for the local player slot, submit its
+  selected tribe to Better BoP, and automatically load the initial state for
+  the guest after the host's map upload makes the game active.
 - Add Modded by extending `MultiplayerSelectionScreen.ScreenSelectionList` and
   render rows through the stock `MultiplayerScreen`. Do not alter the Ongoing or
   Replays models, and restore the stock New Game button when leaving Modded.
@@ -163,8 +173,9 @@ the reference assemblies, not that the patched screen executed correctly.
   auth exchange explicitly returns 401/403. The OAuth callback may rotate the
   token only for the exact existing Discord/Polytopia pair and must not announce
   recovery as a new integration.
-- Opening a Modded game is explicit. Background polling updates the list and
-  command stream but must not unexpectedly load a scene from the main menu.
+- Existing active games still open explicitly. Only the match whose tribe was
+  just chosen in this running client may auto-open; this prevents a restart or
+  background poll from unexpectedly loading an older game from the main menu.
 - Retry transient `MatchEnded` result failures in memory, then clear the active
   transport as soon as the server acknowledges the result.
 - Alpha 0.5.14 locks the first preset to map size 121, Dryland, two players, and
@@ -173,7 +184,8 @@ the reference assemblies, not that the patched screen executed correctly.
   Result completion remains dual-report: both clients must name the same winner;
   disagreements are disputed and never change bot Elo.
 - Before release, run the source hash verifier and a clean Release build, then
-  perform a real two-PC smoke test: tabs, both tribe picks, host-only Start,
-  first turn, end turn in each direction, reopen, resignation, capital capture,
+  perform a real two-PC smoke test: native lobby popup, both tribe picks,
+  automatic host generation and guest opening, first turn, end turn in each
+  direction, reopen, resignation, capital capture,
   Discord completion, and unchanged Elo. A compile cannot prove native IL2CPP
   session/player ownership behavior.
