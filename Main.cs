@@ -4,8 +4,8 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.5.20 keeps the locked gameplay baselines and bootstraps the stock
-/// list helper before rendering automatically created Integrated games.
+/// Alpha 0.5.21 keeps the locked gameplay baselines and uses Polytopia's native
+/// lobby, tribe picker, and map generator for automatically started games.
 /// </summary>
 public static class Main
 {
@@ -70,6 +70,11 @@ public static class Main
         SafePatch(typeof(ModdedTabSelectionPatch), logger);
         SafePatch(typeof(ModdedListBuildPatch), logger);
         SafePatch(typeof(IntegratedMainThreadPumpPatch), logger);
+        SafePatch(typeof(IntegratedLobbyPlayerPatch), logger);
+        SafePatch(typeof(IntegratedLobbyStartPatch), logger);
+        SafePatch(typeof(IntegratedLobbyStartGamePatch), logger);
+        SafePatch(typeof(IntegratedLobbyInvitePatch), logger);
+        SafePatch(typeof(IntegratedLobbyLeavePatch), logger);
         SafePatch(typeof(IntegratedModdedCommandPatch), logger);
         SafePatch(typeof(IntegratedModdedResultPatch), logger);
 
@@ -87,7 +92,7 @@ public static class Main
         SafePatch(typeof(UniversalPeaceUnavailablePopupPatch), logger);
         SafePatch(typeof(UniversalPeaceAIPreparePatch), logger);
 
-        logger.LogMessage("Better BoP Alpha 0.5.20 loaded: locked gameplay baselines plus resilient Integrated Modded list initialization.");
+        logger.LogMessage("Better BoP Alpha 0.5.21 loaded: native Integrated lobbies plus automatic stock Tiny Dryland map generation.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)
