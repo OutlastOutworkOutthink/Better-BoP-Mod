@@ -1,4 +1,4 @@
-# Better Battle of Polytopia Mod — Alpha 0.6.1
+# Better Battle of Polytopia Mod — Alpha 0.6.2
 
 This Alpha keeps the working Oblivion, Discord integration, and universal-peace
 behavior locked, then adds the isolated client for bot-created Modded games.
@@ -9,7 +9,7 @@ All other earlier gameplay and experimental UI changes remain inactive.
 Open **Creative**, continue to tribe/game setup, and select **Oblivion** in the
 same rule row as **Perfection**, **Domination**, and **Infinity**.
 
-Alpha 0.6.1 retains both the visible legacy setup row and UI2's later layout
+Alpha 0.6.2 retains both the visible legacy setup row and UI2's later layout
 callbacks, after Polytopia has actually created the game-mode controls.
 
 Oblivion keeps all normal Creative setup choices, but the match itself uses
@@ -60,7 +60,7 @@ from Strategy's unlock list and is shown as available in tribe information even
 before Strategy is researched. Sending a request no longer opens the obsolete
 Strategy warning after the request is sent.
 
-Alpha 0.6.1 retains the legacy tribe-info fix that replaces separate enabled and
+Alpha 0.6.2 retains the legacy tribe-info fix that replaces separate enabled and
 disabled callbacks with one deduplicated peace action. The icon therefore uses
 its available appearance and a click cannot also reach the old Strategy popup.
 
@@ -96,7 +96,7 @@ The private Better BoP server stores the initial state and ordered command bytes
 then reports an agreed in-game winner to the bot after resignation or capital
 capture. It does not collect a Polytopia or Steam password.
 
-The permanent Discord link is identity only. Alpha 0.6.1 separately proves its
+The permanent Discord link is identity only. Alpha 0.6.2 separately proves its
 current compatible ruleset to the multiplayer server, so players do not need to
 relink Discord for every future release.
 
@@ -134,11 +134,9 @@ train/build UI, validation, and execution paths; the original shared data is
 restored immediately and bots keep their normal prices. No per-frame scan is
 added.
 
-The home screen displays **BBoP Alpha 0.6.1** in its bottom-right corner, making
-it easy to confirm which Better BoP build is currently loaded. Alpha 0.6.1 uses
-one isolated text component and retries after the native home layout has created
-its font references. It does not scan the UI tree, clone a Polytopia UI
-component, or request relayout.
+The home screen displays **BBoP Alpha 0.6.2** beneath the existing About label,
+the safe native location at the right of the bottom button row. Alpha 0.6.2 does
+not create, clone, or scan for any Unity UI object and does not request relayout.
 
 ## Inactive archive
 
@@ -148,7 +146,7 @@ explicitly excluded from `BetterBoPMod.dll`. See
 
 ## Install
 
-Download the Alpha 0.6.1 release ZIP, extract it, and place the
+Download the Alpha 0.6.2 release ZIP, extract it, and place the
 `Better-BoP-Mod` folder directly inside Polytopia's `Mods` directory. These files
 must be together at that folder's top level:
 
@@ -164,7 +162,7 @@ converted into Oblivion games.
 The BepInEx log confirms a successful load with:
 
 ```text
-Better BoP Alpha 0.6.1 loaded: visible advanced handicaps, accurate lobby readiness, and delayed version label.
+Better BoP Alpha 0.6.2 loaded: startup-safe version text, advanced handicaps, and accurate lobby readiness.
 ```
 
 ## Development
