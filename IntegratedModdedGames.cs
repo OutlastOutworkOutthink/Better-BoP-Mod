@@ -31,6 +31,8 @@ internal static class IntegratedModdedGames
     private const string ServerBaseUrl = "https://better-bop-server-production.up.railway.app";
     private const string ServerTokenKey = "betterbop.server.token.0.5.14";
     private const string RulesetId = "better-bop-0.5.14";
+    private const int TinyDrylandTileCount = 121;
+    private const int TinyDrylandSideLength = 11;
     private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(20) };
     private static readonly SemaphoreSlim RefreshLock = new(1, 1);
     private static readonly SemaphoreSlim CommandSubmitLock = new(1, 1);
@@ -547,7 +549,9 @@ internal static class IntegratedModdedGames
             Id = Il2CppSystem.Guid.Parse(match.Id),
             Name = $"Integrated G{match.BotGameId}",
             MapPreset = MapPreset.Dryland,
-            MapSize = match.MapSize > 0 ? match.MapSize : 121,
+            // Native lobby and generator APIs use side length, while the
+            // Better BoP API intentionally describes map size as tile count.
+            MapSize = NativeMapSideLength(match.MapSize),
             OpponentCount = 1,
             GameMode = GameMode.Domination,
             OwnerId = Il2CppSystem.Guid.Parse(match.HostAccountId),
@@ -570,8 +574,11 @@ internal static class IntegratedModdedGames
             UserId = Il2CppSystem.Guid.Parse(accountId),
             Name = name,
             GameVersion = new Il2CppSystem.Collections.Generic.List<ClientGameVersionViewModel>(),
+            // The Discord match already reserved and accepted both seats.
+            // Tribe readiness is rendered separately so Polytopia does not
+            // open its unrelated Accept/Decline-invitation flow.
             InvitationState = PlayerInvitationState.Accepted,
-            SelectedTribe = tribe ?? 0,
+            SelectedTribe = tribe ?? (int)TribeType.None,
             SelectedTribeSkin = (int)SkinType.Default,
             AvatarStateData = new Il2CppStructArray<byte>(0),
         };
@@ -592,10 +599,12 @@ internal static class IntegratedModdedGames
             GameManager.PreliminaryGameSettings = BuildPickerSettings(match);
             picker.lobbyId = Il2CppSystem.Guid.Parse(match.Id);
             picker.SetGameOwnerId(Il2CppSystem.Guid.Parse(match.HostAccountId));
+            picker.currPlayerIdx = match.Role == "host" ? 0 : 1;
             picker.onCancel = DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() => { });
             System.Action<TribeType, SkinType, TribeType, Il2CppSystem.Collections.Generic.List<TribeType>> onPicked =
                 (tribe, _, _, _) =>
             {
+                logger.LogInfo($"Submitting tribe {(int)tribe} for Integrated G{match.BotGameId}.");
                 _ = SelectTribeAsync(matchId, (int)tribe);
             };
             picker.onTribePicked = DelegateSupport.ConvertDelegate<
@@ -620,7 +629,7 @@ internal static class IntegratedModdedGames
         settings.GameType = GameType.Multiplayer;
         settings.BaseGameMode = GameMode.Domination;
         settings.RulesGameMode = GameMode.Domination;
-        settings.MapSize = match.MapSize > 0 ? match.MapSize : 121;
+        settings.MapSize = NativeMapSideLength(match.MapSize);
         settings.mapPreset = MapPreset.Dryland;
         settings.OpponentCount = 1;
         settings.ClearPlayers();
@@ -659,13 +668,60 @@ internal static class IntegratedModdedGames
         return false;
     }
 
+    internal static void RefreshIntegratedLobbyRow(LobbyGameInfoRow row)
+    {
+        if (!TryGetIntegratedLobby(row.lobbyGameViewModel, out IntegratedMatch? match) || match == null ||
+            row.infoLabel == null) return;
+        int? ownTribe = match.Role == "host" ? match.HostTribe : match.AwayTribe;
+        int? opponentTribe = match.Role == "host" ? match.AwayTribe : match.HostTribe;
+        row.infoLabel.text = match.Status switch
+        {
+            "waiting_for_tribes" when !ownTribe.HasValue => "Choose your tribe",
+            "waiting_for_tribes" when !opponentTribe.HasValue => "Waiting for opponent's tribe",
+            "provisioning" => "Creating Tiny Dryland map...",
+            "active" => "In progress",
+            _ => row.infoLabel.text,
+        };
+    }
+
+    internal static bool GetIntegratedParticipantBadge(
+        LobbyPopup popup,
+        ParticipatorViewModel participator,
+        ref string result
+    )
+    {
+        if (!TryGetIntegratedLobby(popup.lobbyGameViewModel, out IntegratedMatch? match) || match == null)
+            return true;
+        string accountId = participator.UserId.ToString();
+        bool tribeSelected = string.Equals(accountId, match.HostAccountId, StringComparison.OrdinalIgnoreCase)
+            ? match.HostTribe.HasValue
+            : string.Equals(accountId, match.AwayAccountId, StringComparison.OrdinalIgnoreCase) && match.AwayTribe.HasValue;
+        if (tribeSelected) return true;
+        result = string.Empty;
+        return false;
+    }
+
+    internal static void RefreshIntegratedLobbyPopup(LobbyPopup popup)
+    {
+        if (!TryGetIntegratedLobby(popup.lobbyGameViewModel, out _)) return;
+        if (popup.addPlayerButton != null) popup.addPlayerButton.gameObject.SetActive(false);
+    }
+
     internal static bool BlockIntegratedLobbyAction(LobbyPopup popup, string action)
     {
         if (!TryGetIntegratedLobby(popup.lobbyGameViewModel, out IntegratedMatch? match) || match == null) return true;
+        int? ownTribe = match.Role == "host" ? match.HostTribe : match.AwayTribe;
+        if (action == "start" && !ownTribe.HasValue && match.Status == "waiting_for_tribes")
+        {
+            popup.Hide();
+            OpenTribePicker(match.Id);
+            return false;
+        }
         string description = action switch
         {
             "invite" => "Both player seats are assigned by the Discord bot.",
             "leave" => "Manage or delete this Integrated match from its Discord game channel.",
+            _ when match.Status == "waiting_for_tribes" => "Your tribe is saved. Waiting for your opponent to choose theirs.",
             _ => "The game starts automatically as soon as both players choose a tribe.",
         };
         PopupManager.ShowSimplePopup("better-bop-integrated-lobby", "Integrated Game", description);
@@ -673,6 +729,15 @@ internal static class IntegratedModdedGames
     }
 
     private static string TribeName(int? tribe) => tribe is >= 1 and < 18 ? TribeNames[tribe.Value] : "Not selected";
+
+    private static int NativeMapSideLength(int tileCountOrSideLength)
+    {
+        if (tileCountOrSideLength <= 0) return TinyDrylandSideLength;
+        int sideLength = (int)Math.Sqrt(tileCountOrSideLength);
+        return sideLength * sideLength == tileCountOrSideLength
+            ? sideLength
+            : tileCountOrSideLength;
+    }
 
     private static void AddInfo(MultiplayerScreen screen, string header, string description)
     {
@@ -967,7 +1032,11 @@ internal static class IntegratedModdedGames
                 GameSettings settings = BuildSettings(match);
                 GameManager.Instance.SetLocalClient();
                 CreateSessionResult result = GameManager.Client.CreateSession(settings, Il2CppSystem.Guid.Parse(match.GameId));
-                MapData map = ValidateSession(result, $"Integrated G{match.BotGameId}");
+                MapData map = ValidateSession(
+                    result,
+                    $"Integrated G{match.BotGameId}",
+                    NativeMapSideLength(match.MapSize)
+                );
                 logger.LogMessage(
                     $"Generated stock Polytopia map for Integrated G{match.BotGameId}: " +
                     $"{map.Width}x{map.Height}, {map.Tiles.Length} tiles, {GameManager.GameState.PlayerCount} players."
@@ -1016,7 +1085,11 @@ internal static class IntegratedModdedGames
                 new Il2CppStructArray<byte>(state),
                 Il2CppSystem.Guid.Parse(match.GameId)
             );
-            ValidateSession(result, $"downloaded Integrated G{match.BotGameId}");
+            ValidateSession(
+                result,
+                $"downloaded Integrated G{match.BotGameId}",
+                NativeMapSideLength(match.MapSize)
+            );
             GameManager.Instance.LoadLevel();
             activeMatchId = match.Id;
             activeGameId = match.GameId;
@@ -1029,13 +1102,14 @@ internal static class IntegratedModdedGames
         logger.LogMessage($"Opened Integrated G{match.BotGameId} as {match.Role}.");
     }
 
-    private static MapData ValidateSession(CreateSessionResult result, string context)
+    private static MapData ValidateSession(CreateSessionResult result, string context, int expectedSideLength)
     {
         GameState? gameState = GameManager.GameState;
         MapData? map = gameState?.Map;
         int tileCount = map?.Tiles?.Length ?? 0;
         if (result != CreateSessionResult.Success || gameState == null || map == null ||
-            map.Width == 0 || map.Height == 0 || tileCount == 0 || gameState.PlayerCount != 2)
+            map.Width != expectedSideLength || map.Height != expectedSideLength ||
+            tileCount != expectedSideLength * expectedSideLength || gameState.PlayerCount != 2)
         {
             throw new InvalidOperationException(
                 $"Polytopia could not create the {context} map " +
@@ -1054,7 +1128,7 @@ internal static class IntegratedModdedGames
         settings.GameType = GameType.Multiplayer;
         settings.BaseGameMode = GameMode.Domination;
         settings.RulesGameMode = GameMode.Domination;
-        settings.MapSize = match.MapSize > 0 ? match.MapSize : 121;
+        settings.MapSize = NativeMapSideLength(match.MapSize);
         settings.mapPreset = MapPreset.Dryland;
         settings.OpponentCount = 1;
         settings.ClearPlayers();
@@ -1317,7 +1391,7 @@ internal static class IntegratedModdedGames
         [JsonPropertyName("status")] public string Status { get; init; } = string.Empty;
         [JsonPropertyName("game_id")] public string? GameId { get; init; }
         [JsonPropertyName("role")] public string Role { get; init; } = string.Empty;
-        [JsonPropertyName("map_size")] public int MapSize { get; init; } = 121;
+        [JsonPropertyName("map_size")] public int MapSize { get; init; } = TinyDrylandTileCount;
         [JsonPropertyName("host_tribe")] public int? HostTribe { get; init; }
         [JsonPropertyName("away_tribe")] public int? AwayTribe { get; init; }
         [JsonPropertyName("host_account_id")] public string HostAccountId { get; init; } = string.Empty;
@@ -1462,6 +1536,39 @@ internal static class IntegratedLobbyPlayerPatch
         LobbyPopup __instance,
         Il2CppSystem.Nullable<Il2CppSystem.Guid> __1
     ) => IntegratedModdedGames.ShowIntegratedPlayerInfo(__instance, __1);
+}
+
+[HarmonyPatch(typeof(LobbyGameInfoRow), nameof(LobbyGameInfoRow.SetData))]
+internal static class IntegratedLobbyRowStatePatch
+{
+    [HarmonyPostfix]
+    private static void ShowActualTribeState(LobbyGameInfoRow __instance) =>
+        IntegratedModdedGames.RefreshIntegratedLobbyRow(__instance);
+}
+
+[HarmonyPatch(typeof(LobbyPopup), "GetBadgeIdForParticipator")]
+internal static class IntegratedLobbyBadgePatch
+{
+    [HarmonyPrefix]
+    private static bool HideFalseReadyBadge(
+        LobbyPopup __instance,
+        ParticipatorViewModel participator,
+        ref string __result
+    ) => IntegratedModdedGames.GetIntegratedParticipantBadge(__instance, participator, ref __result);
+}
+
+[HarmonyPatch]
+internal static class IntegratedLobbyPopupStatePatch
+{
+    private static IEnumerable<MethodBase> TargetMethods()
+    {
+        yield return AccessTools.Method(typeof(LobbyPopup), nameof(LobbyPopup.SetData));
+        yield return AccessTools.Method(typeof(LobbyPopup), nameof(LobbyPopup.RefreshPopup));
+    }
+
+    [HarmonyPostfix]
+    private static void KeepDiscordSeatsOnly(LobbyPopup __instance) =>
+        IntegratedModdedGames.RefreshIntegratedLobbyPopup(__instance);
 }
 
 [HarmonyPatch(typeof(LobbyPopup), "OnStartClicked")]
