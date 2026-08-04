@@ -15,7 +15,7 @@ namespace BetterBoPMod;
 /// </summary>
 internal static class HomeVersionLabel
 {
-    internal const string DisplayText = "BBoP Alpha 0.6.0";
+    internal const string DisplayText = "BBoP Alpha 0.6.1";
     private const string ObjectName = "BetterBoP.HomeVersion";
     private static readonly Dictionary<IntPtr, TextMeshProUGUI> LabelsByScreen = new();
     private static ManualLogSource logger = null!;
@@ -34,6 +34,8 @@ internal static class HomeVersionLabel
                 existing != null && existing.gameObject != null)
             {
                 if (!string.Equals(existing.text, DisplayText, StringComparison.Ordinal)) existing.text = DisplayText;
+                if (!existing.gameObject.activeSelf) existing.gameObject.SetActive(true);
+                existing.transform.SetAsLastSibling();
                 return;
             }
 
@@ -49,6 +51,7 @@ internal static class HomeVersionLabel
             components[0] = Il2CppType.Of<RectTransform>();
             GameObject labelObject = new(ObjectName, components);
             labelObject.transform.SetParent(root, false);
+            labelObject.transform.SetAsLastSibling();
             labelObject.AddComponent<CanvasRenderer>();
             TextMeshProUGUI field = labelObject.AddComponent<TextMeshProUGUI>();
             field.font = template.font;
@@ -86,4 +89,17 @@ internal static class HomeVersionInitPatch
     [HarmonyPostfix]
     private static void AddVersion(StartScreen_UI2 __instance, RectTransform rectTransform) =>
         HomeVersionLabel.Ensure(__instance, rectTransform);
+}
+
+/// <summary>
+/// StartScreen.Init can run before its serialized buttons have usable TMP font
+/// references. Retry once the stock layout is complete; Ensure is idempotent
+/// and does not call back into layout.
+/// </summary>
+[HarmonyPatch(typeof(StartScreen_UI2), "OnShowAfterLayout")]
+internal static class HomeVersionShowPatch
+{
+    [HarmonyPostfix]
+    private static void AddVersion(StartScreen_UI2 __instance) =>
+        HomeVersionLabel.Ensure(__instance, __instance.rectTransform);
 }
