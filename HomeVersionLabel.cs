@@ -1,148 +1,89 @@
 using BepInEx.Logging;
 using HarmonyLib;
+using Il2CppInterop.Runtime;
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace BetterBoPMod;
 
 /// <summary>
-/// Adds the mod version to Polytopia's home-screen version area. The native
-/// version text is extended when present; a lightweight cloned text field is
-/// used only as a fallback for prefab revisions without that field.
+/// Adds a self-contained version label after the home screen has initialized.
+/// It never scans the UI hierarchy, clones a game component, or triggers the
+/// stock layout engine.
 /// </summary>
 internal static class HomeVersionLabel
 {
-    internal const string DisplayText = "BBoP Alpha 0.5.25";
+    internal const string DisplayText = "BBoP Alpha 0.6.0";
     private const string ObjectName = "BetterBoP.HomeVersion";
-    private static readonly Dictionary<IntPtr, LabelBinding> LabelsByScreen = new();
-    private static readonly HashSet<IntPtr> ScreensBeingBound = new();
+    private static readonly Dictionary<IntPtr, TextMeshProUGUI> LabelsByScreen = new();
     private static ManualLogSource logger = null!;
 
     internal static void Initialize(ManualLogSource logSource) => logger = logSource;
 
-    internal static void Ensure(StartScreen_UI2? screen)
+    internal static void Ensure(StartScreen_UI2? screen, RectTransform? root)
     {
-        if (screen?.rectTransform == null) return;
+        if (screen == null || root == null) return;
         IntPtr pointer = screen.Pointer;
-        if (pointer == IntPtr.Zero || !ScreensBeingBound.Add(pointer)) return;
+        if (pointer == IntPtr.Zero) return;
+
         try
         {
-            if (LabelsByScreen.TryGetValue(pointer, out LabelBinding? existing) && existing.IsAlive)
+            if (LabelsByScreen.TryGetValue(pointer, out TextMeshProUGUI? existing) &&
+                existing != null && existing.gameObject != null)
             {
-                existing.Refresh();
+                if (!string.Equals(existing.text, DisplayText, StringComparison.Ordinal)) existing.text = DisplayText;
                 return;
             }
 
-            TextMeshProUGUI? nativeVersion = FindNativeVersionText(screen.rectTransform);
-            LabelBinding binding = nativeVersion != null
-                ? LabelBinding.ForNative(nativeVersion)
-                : CreateFallback(screen);
-            if (!binding.IsAlive) return;
-            LabelsByScreen[pointer] = binding;
-            binding.Refresh();
-            logger.LogInfo(nativeVersion != null
-                ? $"Added {DisplayText} to the native home-screen version text."
-                : $"Added {DisplayText} in the home screen's bottom-right corner.");
+            TextMeshProUGUI? template = screen.aboutButton?.titleTextField?.textField ??
+                                        screen.settingsButton?.titleTextField?.textField;
+            if (template == null)
+            {
+                logger.LogWarning("Home screen initialized without a usable native font template; version label skipped.");
+                return;
+            }
+
+            Il2CppReferenceArray<Il2CppSystem.Type> components = new(1);
+            components[0] = Il2CppType.Of<RectTransform>();
+            GameObject labelObject = new(ObjectName, components);
+            labelObject.transform.SetParent(root, false);
+            labelObject.AddComponent<CanvasRenderer>();
+            TextMeshProUGUI field = labelObject.AddComponent<TextMeshProUGUI>();
+            field.font = template.font;
+            field.fontSharedMaterial = template.fontSharedMaterial;
+            field.text = DisplayText;
+            field.alignment = TextAlignmentOptions.BottomRight;
+            field.fontSize = 18f;
+            field.enableAutoSizing = false;
+            field.enableWordWrapping = false;
+            field.raycastTarget = false;
+            Color color = template.color;
+            color.a = 0.8f;
+            field.color = color;
+
+            RectTransform transform = field.rectTransform;
+            transform.anchorMin = new Vector2(1f, 0f);
+            transform.anchorMax = new Vector2(1f, 0f);
+            transform.pivot = new Vector2(1f, 0f);
+            transform.anchoredPosition = new Vector2(-24f, 20f);
+            transform.sizeDelta = new Vector2(360f, 34f);
+
+            LabelsByScreen[pointer] = field;
+            logger.LogInfo($"Added {DisplayText} with an isolated bottom-right text component.");
         }
         catch (Exception exception)
         {
-            logger.LogWarning($"Could not add the home-screen mod version yet: {exception.Message}");
-        }
-        finally
-        {
-            ScreensBeingBound.Remove(pointer);
-        }
-    }
-
-    private static TextMeshProUGUI? FindNativeVersionText(RectTransform root)
-    {
-        foreach (TextMeshProUGUI field in root.GetComponentsInChildren<TextMeshProUGUI>(true))
-        {
-            if (field == null || field.gameObject == null || field.gameObject.name == ObjectName) continue;
-            string name = field.gameObject.name ?? string.Empty;
-            string text = field.text ?? string.Empty;
-            if (name.Contains("version", StringComparison.OrdinalIgnoreCase) ||
-                (!string.IsNullOrEmpty(Application.version) && text.Contains(Application.version, StringComparison.Ordinal)))
-                return field;
-        }
-        return null;
-    }
-
-    private static LabelBinding CreateFallback(StartScreen_UI2 screen)
-    {
-        TextField_UI2? template = screen.aboutButton?.titleTextField ?? screen.settingsButton?.titleTextField;
-        if (template == null || template.gameObject == null) return LabelBinding.Empty;
-
-        GameObject clone = UnityEngine.Object.Instantiate(template.gameObject, screen.rectTransform);
-        clone.name = ObjectName;
-        TextField_UI2? wrapper = clone.GetComponent<TextField_UI2>();
-        TextMeshProUGUI? field = wrapper?.textField ?? clone.GetComponent<TextMeshProUGUI>();
-        if (field == null) return LabelBinding.Empty;
-
-        RectTransform transform = field.rectTransform;
-        transform.anchorMin = new Vector2(1f, 0f);
-        transform.anchorMax = new Vector2(1f, 0f);
-        transform.pivot = new Vector2(1f, 0f);
-        transform.anchoredPosition = new Vector2(-24f, 20f);
-        transform.sizeDelta = new Vector2(360f, 34f);
-        field.alignment = TextAlignmentOptions.BottomRight;
-        field.fontSize = 18f;
-        field.enableAutoSizing = false;
-        field.enableWordWrapping = false;
-        field.raycastTarget = false;
-        Color color = field.color;
-        color.a = 0.8f;
-        field.color = color;
-        clone.SetActive(true);
-        return LabelBinding.ForFallback(field);
-    }
-
-    private sealed class LabelBinding
-    {
-        internal static readonly LabelBinding Empty = new(null, false, string.Empty);
-        private readonly TextMeshProUGUI? field;
-        private readonly bool native;
-        private string nativeText;
-
-        private LabelBinding(TextMeshProUGUI? field, bool native, string nativeText)
-        {
-            this.field = field;
-            this.native = native;
-            this.nativeText = nativeText;
-        }
-
-        internal static LabelBinding ForNative(TextMeshProUGUI field) => new(field, true, Clean(field.text));
-        internal static LabelBinding ForFallback(TextMeshProUGUI field) => new(field, false, string.Empty);
-        internal bool IsAlive => field != null && field.gameObject != null;
-
-        internal void Refresh()
-        {
-            if (!IsAlive) return;
-            if (!native)
-            {
-                if (!string.Equals(field!.text, DisplayText, StringComparison.Ordinal)) field.text = DisplayText;
-                if (!field.gameObject.activeSelf) field.gameObject.SetActive(true);
-                return;
-            }
-
-            string current = Clean(field!.text);
-            if (!string.IsNullOrWhiteSpace(current)) nativeText = current;
-            string desired = string.IsNullOrWhiteSpace(nativeText) ? DisplayText : $"{nativeText}\n{DisplayText}";
-            if (!string.Equals(field.text, desired, StringComparison.Ordinal)) field.text = desired;
-        }
-
-        private static string Clean(string? value)
-        {
-            string text = value ?? string.Empty;
-            int marker = text.IndexOf(DisplayText, StringComparison.Ordinal);
-            return marker < 0 ? text.TrimEnd() : text[..marker].TrimEnd('\r', '\n', ' ');
+            logger.LogWarning($"Could not add the optional home-screen version label: {exception.Message}");
         }
     }
 }
 
-[HarmonyPatch(typeof(StartScreen_UI2), "OnShowAfterLayout")]
-internal static class HomeVersionAfterLayoutPatch
+[HarmonyPatch(typeof(StartScreen_UI2), nameof(StartScreen_UI2.Init))]
+internal static class HomeVersionInitPatch
 {
     [HarmonyPostfix]
-    private static void AddVersion(StartScreen_UI2 __instance) => HomeVersionLabel.Ensure(__instance);
+    private static void AddVersion(StartScreen_UI2 __instance, RectTransform rectTransform) =>
+        HomeVersionLabel.Ensure(__instance, rectTransform);
 }
