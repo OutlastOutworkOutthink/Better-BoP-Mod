@@ -4,8 +4,8 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.5.22 keeps the locked gameplay baselines and uses Polytopia's native
-/// lobby, tribe picker, and map generator for automatically started games.
+/// Alpha 0.5.23 keeps the locked gameplay baselines and uses Polytopia's native
+/// lobby, tribe picker, and map generator for host-started games.
 /// </summary>
 public static class Main
 {
@@ -74,6 +74,8 @@ public static class Main
         SafePatch(typeof(IntegratedLobbyRowStatePatch), logger);
         SafePatch(typeof(IntegratedLobbyBadgePatch), logger);
         SafePatch(typeof(IntegratedLobbyPopupStatePatch), logger);
+        SafePatch(typeof(IntegratedLobbyButtonStatePatch), logger);
+        SafePatch(typeof(IntegratedLobbyDescriptionPatch), logger);
         SafePatch(typeof(IntegratedLobbyStartPatch), logger);
         SafePatch(typeof(IntegratedLobbyStartGamePatch), logger);
         SafePatch(typeof(IntegratedLobbyInvitePatch), logger);
@@ -95,7 +97,7 @@ public static class Main
         SafePatch(typeof(UniversalPeaceUnavailablePopupPatch), logger);
         SafePatch(typeof(UniversalPeaceAIPreparePatch), logger);
 
-        logger.LogMessage("Better BoP Alpha 0.5.22 loaded: recorded tribe choices plus verified stock 11x11 Tiny Dryland generation.");
+        logger.LogMessage("Better BoP Alpha 0.5.23 loaded: vanilla-style one-time tribe setup plus verified stock 11x11 Tiny Dryland generation.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)
