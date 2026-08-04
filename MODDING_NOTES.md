@@ -190,7 +190,7 @@ the reference assemblies, not that the patched screen executed correctly.
   Discord completion, and unchanged Elo. A compile cannot prove native IL2CPP
   session/player ownership behavior.
 
-## Advanced multiplayer handicaps (Alpha 0.5.24)
+## Advanced multiplayer handicaps (Alpha 0.5.25)
 
 - Reuse `GameSetupScreen_UI2.advancedSettingsExpanded`, the stock horizontal
   list prefab, and `GameSetupScreenView.allComponents/allLists`. Reassert the
@@ -200,10 +200,13 @@ the reference assemblies, not that the patched screen executed correctly.
   Persist by game ID and embed a compact validated marker in `GameName` so a
   modded peer reads the same deterministic rules. Only strip a marker after all
   three encoded indexes validate, or a legitimate game name could be cut.
-- Use the shared `UnitData.cost`, `ImprovementData.cost`, and
-  `UnitDataExtensions.GetMaxHealth` accessors. Cache the rules and immutable
-  rules owner when a session opens; hot cost/health access then needs only an
-  owner comparison and integer ceiling math, never PlayerPrefs or a frame scan.
+- Do not Harmony-patch `UnitData.get_cost` or `ImprovementData.get_cost` in an
+  IL2CPP build. PolyMod identifies both as generated field accessors and cannot
+  create a safe native patch backend. Instead, temporarily substitute scaled
+  values around `InteractionBar` price rendering and the matching
+  `TrainCommand`/`BuildCommand` validation and execution calls, then restore in
+  a Harmony finalizer. Cache the rules and immutable rules owner when a session
+  opens; hot paths still require only an owner comparison and ceiling math.
 - Enemy units need their scaled current health filled when created. Conversion
   is a separate ownership transition: preserve the unit's health percentage
   across `ConvertAction.Execute`, then adopt the maximum appropriate to its new
@@ -215,6 +218,7 @@ the reference assemblies, not that the patched screen executed correctly.
   healing, and narrow/wide setup layouts on the Windows game build.
 - Put the mod version beside the native home-screen version text where that
   field exists, and clone a native text style as a bottom-right fallback. Patch
-  `OnShow`, `OnShowAfterLayout`, `RunLayout`, and `RefreshVersionInfo`; the
-  latter may overwrite appended text after the screen first appears. This adds
-  no update-loop or polling work.
+  only `OnShowAfterLayout`, guard against re-entry, and avoid assigning text or
+  active state when unchanged. Patching `RunLayout` and then changing TMP text
+  can re-enter layout natively and terminate without a managed stack trace—the
+  exact Alpha 0.5.24 startup failure pattern.
