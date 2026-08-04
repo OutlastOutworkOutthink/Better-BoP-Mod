@@ -44,17 +44,20 @@ internal static class AdvancedMatchSettings
 
     internal static void Initialize(ManualLogSource logSource) => logger = logSource;
 
-    internal static bool IsMultiplayerSetup()
+    internal static bool IsSupportedSetup()
     {
         GameSettings? settings = GameManager.PreliminaryGameSettings ?? GameManager.Instance?.settings;
         if (settings == null) return false;
-        return settings.GameType is GameType.Multiplayer or GameType.Matchmaking or GameType.Competitive;
+        return settings.GameType is GameType.SinglePlayer or GameType.Multiplayer or
+            GameType.Matchmaking or GameType.Competitive;
     }
 
     internal static void ArmNextGame()
     {
-        if (!IsMultiplayerSetup()) return;
+        if (!IsSupportedSetup()) return;
         pendingRules = SelectedRules();
+        activeRules = pendingRules;
+        hasActiveRulesOwner = false;
         pendingSinceUtc = DateTime.UtcNow;
         pending = true;
         GameSettings? settings = GameManager.PreliminaryGameSettings ?? GameManager.Instance?.settings;
@@ -82,9 +85,21 @@ internal static class AdvancedMatchSettings
 
     internal static void CapturePendingRulesFromCurrentGame()
     {
-        if (GameManager.Client == null) return;
+        if (GameManager.Client == null)
+        {
+            if (!pending) activeRules = RuleSet.Default;
+            pending = false;
+            RefreshRulesOwner(GameManager.GameState);
+            return;
+        }
         Il2CppSystem.Nullable<Il2CppSystem.Guid> gameId = GameManager.Client.CurrentGameId;
-        if (!gameId.HasValue) return;
+        if (!gameId.HasValue)
+        {
+            if (!pending) activeRules = RuleSet.Default;
+            pending = false;
+            RefreshRulesOwner(GameManager.GameState);
+            return;
+        }
         if (pending) CapturePendingRules(gameId.Value);
         else LoadRulesForGame(gameId.Value.ToString(), GameManager.GameState);
         RefreshRulesOwner(GameManager.GameState);
@@ -95,7 +110,7 @@ internal static class AdvancedMatchSettings
         GameSetupScreenView? view = screen.view;
         if (view == null) return false;
 
-        if (!IsMultiplayerSetup())
+        if (!IsSupportedSetup())
         {
             SetVisible(view, false);
             return false;
@@ -103,6 +118,9 @@ internal static class AdvancedMatchSettings
 
         try
         {
+            view.SetShowAdvancedSettingsToggleButton(
+                screen.advancedSettingsExpanded ? "Hide Advanced Settings" : "Show Advanced Settings"
+            );
             if (!ControlsByView.TryGetValue(view.Pointer, out Controls? controls) || !controls.IsAlive)
             {
                 UIHorizontalList_UI2? listTemplate = view.listMapSize ?? view.listGameMode ?? view.listNetwork;
@@ -136,14 +154,11 @@ internal static class AdvancedMatchSettings
                 );
                 ControlsByView[view.Pointer] = controls;
                 InsertAfterAdvancedToggle(view, controls);
-                logger.LogInfo("Added three native advanced multiplayer setting rows.");
+                logger.LogInfo("Added three native advanced match setting rows.");
             }
 
             RefreshControls(controls);
             SetVisible(view, screen.advancedSettingsExpanded);
-            view.SetShowAdvancedSettingsToggleButton(
-                screen.advancedSettingsExpanded ? "Hide Advanced Settings" : "Show Advanced Settings"
-            );
             return true;
         }
         catch (Exception exception)
@@ -156,7 +171,7 @@ internal static class AdvancedMatchSettings
     internal static void RefreshVisibility(GameSetupScreen_UI2 screen)
     {
         if (screen?.view == null) return;
-        bool target = IsMultiplayerSetup();
+        bool target = IsSupportedSetup();
         SetVisible(screen.view, target && screen.advancedSettingsExpanded);
         if (target)
         {
@@ -172,7 +187,7 @@ internal static class AdvancedMatchSettings
     )
     {
         RefreshVisibility(screen);
-        if (screen?.view != null && IsMultiplayerSetup()) screen.view.RunLayout(screenSize);
+        if (screen?.view != null && IsSupportedSetup()) screen.view.RunLayout(screenSize);
     }
 
     internal static UnitCostScope BeginUnitCostScope(GameState? state, UnitData.Type? only = null)
@@ -643,6 +658,13 @@ internal static class AdvancedSettingsTogglePatch
 
 [HarmonyPatch(typeof(GameSetupScreen_UI2), "OnContinueClicked_StartMultiplayerGame")]
 internal static class AdvancedSettingsMultiplayerStartPatch
+{
+    [HarmonyPrefix]
+    private static void ArmRules() => AdvancedMatchSettings.ArmNextGame();
+}
+
+[HarmonyPatch(typeof(GameSetupScreen_UI2), "OnContinueClicked_StartSingleplayerGame")]
+internal static class AdvancedSettingsSingleplayerStartPatch
 {
     [HarmonyPrefix]
     private static void ArmRules() => AdvancedMatchSettings.ArmNextGame();

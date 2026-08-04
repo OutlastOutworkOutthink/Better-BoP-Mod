@@ -190,7 +190,7 @@ the reference assemblies, not that the patched screen executed correctly.
   Discord completion, and unchanged Elo. A compile cannot prove native IL2CPP
   session/player ownership behavior.
 
-## Advanced multiplayer handicaps (Alpha 0.6.0)
+## Advanced match handicaps (Alpha 0.6.1)
 
 - Reuse `GameSetupScreen_UI2.advancedSettingsExpanded`, the stock horizontal
   list prefab, and `GameSetupScreenView.allComponents/allLists`. Reassert the
@@ -200,6 +200,9 @@ the reference assemblies, not that the patched screen executed correctly.
   Persist by game ID and embed a compact validated marker in `GameName` so a
   modded peer reads the same deterministic rules. Only strip a marker after all
   three encoded indexes validate, or a legitimate game name could be cut.
+  For local games without a session ID, consume the pending snapshot once at
+  `OnGameReady`; reset to 100% defaults when opening a game that was not armed
+  by the setup screen so older saves cannot inherit the previous match's rules.
 - Do not Harmony-patch `UnitData.get_cost` or `ImprovementData.get_cost` in an
   IL2CPP build. PolyMod identifies both as generated field accessors and cannot
   create a safe native patch backend. Instead, temporarily substitute scaled
@@ -216,11 +219,19 @@ the reference assemblies, not that the patched screen executed correctly.
   Before publishing, test host and guest values, reopen persistence, all seven
   percentages, bot costs, roads/special improvements, spawning, conversion,
   healing, and narrow/wide setup layouts on the Windows game build.
+- The handicap UI must include `GameType.SinglePlayer`; Creative/Oblivion uses
+  that type. Restricting it to network types silently removes both the stock
+  advanced toggle and all three rows from the Creative setup screen.
 - Do not discover the home version label through `GetComponentsInChildren` and
   do not clone a `TextField_UI2` object. Both approaches can terminate inside
-  native UI code without a managed exception. Alpha 0.6.0 creates one plain TMP
-  text object from `StartScreen_UI2.Init`, borrows only the known About-button
-  font/material, anchors it directly, and never calls the stock layout engine.
+  native UI code without a managed exception. Alpha 0.6.1 creates one plain TMP
+  text object, borrows only the known About-button font/material, anchors it
+  directly, and never calls the stock layout engine. `Init` may precede usable
+  serialized button fonts, so retry idempotently from `OnShowAfterLayout`.
+- Lobby readiness must be calculated from both nullable tribe selections, not
+  merely the server status or two accepted Discord seats. Write the result to
+  `LobbyPopup.Description` after `SetData`/`RefreshPopup` so the native
+  "Ready to start!" text cannot survive while either tribe is unselected.
 
 ## Release numbering
 

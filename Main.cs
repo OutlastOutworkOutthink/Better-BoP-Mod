@@ -4,8 +4,9 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.6.0 keeps the locked gameplay baselines and replaces the remaining
-/// startup-sensitive version UI with one isolated text component.
+/// Alpha 0.6.1 keeps the locked gameplay baselines, exposes the advanced
+/// handicap rows in Creative setup, and retries the isolated version label
+/// only after the stock home layout is ready.
 /// </summary>
 public static class Main
 {
@@ -102,6 +103,7 @@ public static class Main
         SafePatch(typeof(AdvancedSettingsOnShowPatch), logger);
         SafePatch(typeof(AdvancedSettingsLayoutPatch), logger);
         SafePatch(typeof(AdvancedSettingsTogglePatch), logger);
+        SafePatch(typeof(AdvancedSettingsSingleplayerStartPatch), logger);
         SafePatch(typeof(AdvancedSettingsMultiplayerStartPatch), logger);
         SafePatch(typeof(AdvancedSettingsMatchmakingStartPatch), logger);
         SafePatch(typeof(AdvancedSettingsCreateSessionPatch), logger);
@@ -117,8 +119,9 @@ public static class Main
         SafePatch(typeof(AdvancedEnemySpawnHealthPatch), logger);
         SafePatch(typeof(AdvancedConvertedUnitHealthPatch), logger);
         SafePatch(typeof(HomeVersionInitPatch), logger);
+        SafePatch(typeof(HomeVersionShowPatch), logger);
 
-        logger.LogMessage("Better BoP Alpha 0.6.0 loaded: isolated version label and IL2CPP-safe multiplayer handicaps.");
+        logger.LogMessage("Better BoP Alpha 0.6.1 loaded: visible advanced handicaps, accurate lobby readiness, and delayed version label.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)

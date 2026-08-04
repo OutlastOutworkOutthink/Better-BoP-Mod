@@ -649,10 +649,12 @@ internal static class IntegratedModdedGames
             row.infoLabel == null) return;
         int? ownTribe = match.Role == "host" ? match.HostTribe : match.AwayTribe;
         int? opponentTribe = match.Role == "host" ? match.AwayTribe : match.HostTribe;
-        row.infoLabel.text = match.Status switch
+        row.infoLabel.text = !ownTribe.HasValue
+            ? "Choose your tribe"
+            : !opponentTribe.HasValue
+                ? "Waiting for opponent's tribe"
+                : match.Status switch
         {
-            "waiting_for_tribes" when !ownTribe.HasValue => "Choose your tribe",
-            "waiting_for_tribes" when !opponentTribe.HasValue => "Waiting for opponent's tribe",
             "ready_to_start" when match.Role == "host" => "Ready to start",
             "ready_to_start" => "Waiting for host",
             "provisioning" => "Creating Tiny Dryland map...",
@@ -681,6 +683,7 @@ internal static class IntegratedModdedGames
         if (!TryGetIntegratedLobby(popup.lobbyGameViewModel, out IntegratedMatch? match) || match == null) return;
         if (popup.addPlayerButton != null) popup.addPlayerButton.gameObject.SetActive(false);
         RefreshIntegratedPlayerHeads(popup, match);
+        popup.Description = GetIntegratedLobbyDescription(match, popup.Description);
 
         if (popup.Buttons == null || popup.Buttons.Length == 0) return;
         UITextButton actionButton = popup.Buttons[popup.Buttons.Length - 1];
@@ -739,17 +742,22 @@ internal static class IntegratedModdedGames
     internal static void DescribeIntegratedLobby(LobbyPopup popup, ref string description)
     {
         if (!TryGetIntegratedLobby(popup.lobbyGameViewModel, out IntegratedMatch? match) || match == null) return;
+        description = GetIntegratedLobbyDescription(match, description);
+    }
+
+    private static string GetIntegratedLobbyDescription(IntegratedMatch match, string fallback)
+    {
         int? ownTribe = match.Role == "host" ? match.HostTribe : match.AwayTribe;
         int? opponentTribe = match.Role == "host" ? match.AwayTribe : match.HostTribe;
-        description = match.Status switch
+        if (!ownTribe.HasValue) return "Choose your tribe to lock in your seat.";
+        if (!opponentTribe.HasValue) return "Waiting for your opponent to choose a tribe.";
+        return match.Status switch
         {
-            "waiting_for_tribes" when !ownTribe.HasValue => "Choose your tribe to lock in your seat.",
-            "waiting_for_tribes" when !opponentTribe.HasValue => "Waiting for your opponent to choose a tribe.",
             "ready_to_start" when match.Role == "host" => "Both tribes are locked. Start the game when ready.",
             "ready_to_start" => "Both tribes are locked. Waiting for the host to start.",
             "provisioning" => "The host is creating the Tiny Dryland map.",
             "active" => "This Integrated game is in progress.",
-            _ => description,
+            _ => fallback,
         };
     }
 

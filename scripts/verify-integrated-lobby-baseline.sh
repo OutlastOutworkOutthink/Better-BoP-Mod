@@ -31,6 +31,8 @@ require_text 'Your tribe is already locked for this game.' "$source_file"
 require_text 'StartMatchAsync(match.Id)' "$source_file"
 require_text 'IntegratedLobbyButtonStatePatch' "$main_file"
 require_text 'IntegratedLobbyDescriptionPatch' "$main_file"
+require_text 'popup.Description = GetIntegratedLobbyDescription' "$source_file"
+require_text 'if (!opponentTribe.HasValue) return "Waiting for your opponent to choose a tribe.";' "$source_file"
 
 reject_text 'Change Your Tribe' "$source_file"
 reject_text 'Refresh Modded Games' "$source_file"
