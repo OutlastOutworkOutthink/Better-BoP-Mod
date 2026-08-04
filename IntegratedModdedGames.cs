@@ -40,12 +40,16 @@ internal static class IntegratedModdedGames
     private static readonly SemaphoreSlim ResultReportLock = new(1, 1);
     private static readonly SemaphoreSlim AutoAdvanceLock = new(1, 1);
     private static readonly ConcurrentQueue<Action> MainThreadActions = new();
-    private static readonly string[] TribeNames =
-    {
-        "", "Nature", "Ai-Mo", "Aquarion", "Bardur", "Elyrion", "Hoodrick",
-        "Imperius", "Kickoo", "Luxidoor", "Oumaji", "Quetzali", "Vengir",
-        "Xin-xi", "Yădakk", "Zebasi", "Polaris", "Cymanti",
-    };
+    private static readonly MethodInfo? LoadTribeHeadMethod = AccessTools.Method(
+        typeof(PlayerButton),
+        "LoadFaceIcon",
+        new[] { typeof(TribeType) }
+    );
+    private static readonly MethodInfo? LoadTribelessHeadMethod = AccessTools.Method(
+        typeof(PlayerButton),
+        "LoadFaceIcon",
+        Type.EmptyTypes
+    );
 
     private static ManualLogSource logger = null!;
     private static CancellationTokenSource? polling;
@@ -65,8 +69,8 @@ internal static class IntegratedModdedGames
     private static int mainThreadId;
     private static int renderRequested;
     private static bool listReuseBootstrapLogged;
+    private static bool headRefreshWarningLogged;
     private static string lastRenderSummary = string.Empty;
-    private static string pendingAutoOpenMatchId = string.Empty;
     private static string pendingHostStateMatchId = string.Empty;
     private static byte[]? pendingHostInitialState;
 
@@ -75,6 +79,8 @@ internal static class IntegratedModdedGames
     internal static void Initialize(ManualLogSource logSource)
     {
         logger = logSource;
+        if (LoadTribeHeadMethod == null || LoadTribelessHeadMethod == null)
+            logger.LogWarning("Polytopia's native tribe-head loaders were not found; Integrated lobby heads may use profile avatars.");
         polling?.Cancel();
         polling = new CancellationTokenSource();
         _ = PollLoopAsync(polling.Token);
@@ -132,8 +138,7 @@ internal static class IntegratedModdedGames
 
             try
             {
-                bool waitingForAutomaticStart = !string.IsNullOrWhiteSpace(pendingAutoOpenMatchId);
-                await Task.Delay(TimeSpan.FromSeconds(active || waitingForAutomaticStart ? 3 : 12), cancellationToken).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromSeconds(active ? 3 : 12), cancellationToken).ConfigureAwait(false);
             }
             catch (TaskCanceledException)
             {
@@ -469,7 +474,6 @@ internal static class IntegratedModdedGames
             {
                 RenderMatch(screen, match);
             }
-            screen.AddButtonRow("Refresh Modded Games", Click(() => _ = RefreshMatchesAsync(true)));
         }
         catch (Exception exception)
         {
@@ -499,44 +503,9 @@ internal static class IntegratedModdedGames
 
     private static void RenderMatch(MultiplayerScreen screen, IntegratedMatch match)
     {
-        string own = match.Role == "host" ? match.HostDisplayName : match.AwayDisplayName;
-        string opponent = match.Role == "host" ? match.AwayDisplayName : match.HostDisplayName;
-        int? ownTribe = match.Role == "host" ? match.HostTribe : match.AwayTribe;
-        int? opponentTribe = match.Role == "host" ? match.AwayTribe : match.HostTribe;
-        string status = match.Status switch
-        {
-            "awaiting_acceptance" => "Preparing game",
-            "waiting_for_tribes" => "Choosing tribes",
-            "ready_to_start" => match.Role == "host" ? "Ready for you to host" : "Waiting for host",
-            "provisioning" => "Host is creating the game",
-            "active" => "In progress",
-            "completed" => "Completed",
-            "disputed" => "Result needs admin review",
-            _ => match.Status,
-        };
-        LobbyGameViewModel lobby = BuildLobbyViewModel(match);
-        screen.AddLobbyRow(lobby);
-        AddInfo(
-            screen,
-            status,
-            $"{own} (you) vs {opponent} · Tiny Dryland · Unranked\nYour tribe: {TribeName(ownTribe)} · Opponent: {TribeName(opponentTribe)}"
-        );
-
-        if (match.Status is "waiting_for_tribes" or "ready_to_start")
-        {
-            screen.AddButtonRow(
-                ownTribe.HasValue ? "Change Your Tribe" : "Choose Your Tribe",
-                Click(() => OpenTribePicker(match.Id))
-            );
-        }
-        else if (match.Status == "active")
-        {
-            screen.AddButtonRow(active && activeMatchId == match.Id ? "Game Open" : "Open Modded Game", Click(() => _ = OpenMatchAsync(match.Id)));
-        }
-        else if (match.Status == "provisioning" && match.Role == "host")
-        {
-            AddInfo(screen, "Creating the map", "Both tribes are selected. The host is generating the Polytopia map automatically.");
-        }
+        // Keep the unselected Modded tab as clean as the stock Ongoing list.
+        // All setup details and actions belong to Polytopia's lobby popup.
+        screen.AddLobbyRow(BuildLobbyViewModel(match));
     }
 
     private static LobbyGameViewModel BuildLobbyViewModel(IntegratedMatch match)
@@ -591,6 +560,9 @@ internal static class IntegratedModdedGames
             IntegratedMatch? match = matches.FirstOrDefault(item => item.Id == matchId);
             if (match == null || match.Status is not ("waiting_for_tribes" or "ready_to_start"))
                 throw new InvalidOperationException("This match is no longer accepting tribe choices.");
+            int? ownTribe = match.Role == "host" ? match.HostTribe : match.AwayTribe;
+            if (ownTribe.HasValue)
+                throw new InvalidOperationException("Your tribe is already locked for this game.");
 
             IScreen? raw = UIManager.Instance.GetScreen(UIConstants.Screens.TribePicker, true);
             TribeSelectorScreen? picker = raw?.TryCast<TribeSelectorScreen>();
@@ -652,8 +624,11 @@ internal static class IntegratedModdedGames
         if (!TryGetIntegratedLobby(popup.lobbyGameViewModel, out IntegratedMatch? match) || match == null) return true;
         string accountId = userId.HasValue ? userId.Value.ToString() : string.Empty;
         string localAccountId = AccountManager.PlayerAccountId.ToString();
+        int? selectedTribe = string.Equals(accountId, match.HostAccountId, StringComparison.OrdinalIgnoreCase)
+            ? match.HostTribe
+            : match.AwayTribe;
         if (string.Equals(accountId, localAccountId, StringComparison.OrdinalIgnoreCase) &&
-            match.Status is "waiting_for_tribes" or "ready_to_start")
+            !selectedTribe.HasValue && match.Status == "waiting_for_tribes")
         {
             popup.Hide();
             OpenTribePicker(match.Id);
@@ -678,6 +653,8 @@ internal static class IntegratedModdedGames
         {
             "waiting_for_tribes" when !ownTribe.HasValue => "Choose your tribe",
             "waiting_for_tribes" when !opponentTribe.HasValue => "Waiting for opponent's tribe",
+            "ready_to_start" when match.Role == "host" => "Ready to start",
+            "ready_to_start" => "Waiting for host",
             "provisioning" => "Creating Tiny Dryland map...",
             "active" => "In progress",
             _ => row.infoLabel.text,
@@ -692,43 +669,125 @@ internal static class IntegratedModdedGames
     {
         if (!TryGetIntegratedLobby(popup.lobbyGameViewModel, out IntegratedMatch? match) || match == null)
             return true;
-        string accountId = participator.UserId.ToString();
-        bool tribeSelected = string.Equals(accountId, match.HostAccountId, StringComparison.OrdinalIgnoreCase)
-            ? match.HostTribe.HasValue
-            : string.Equals(accountId, match.AwayAccountId, StringComparison.OrdinalIgnoreCase) && match.AwayTribe.HasValue;
-        if (tribeSelected) return true;
+        // A selected tribe head is the readiness indicator. Integrated seats
+        // never use invitation/ready badges, which also avoids the white badge
+        // placeholder shown when a stock sprite is unavailable.
         result = string.Empty;
         return false;
     }
 
     internal static void RefreshIntegratedLobbyPopup(LobbyPopup popup)
     {
-        if (!TryGetIntegratedLobby(popup.lobbyGameViewModel, out _)) return;
+        if (!TryGetIntegratedLobby(popup.lobbyGameViewModel, out IntegratedMatch? match) || match == null) return;
         if (popup.addPlayerButton != null) popup.addPlayerButton.gameObject.SetActive(false);
+        RefreshIntegratedPlayerHeads(popup, match);
+
+        if (popup.Buttons == null || popup.Buttons.Length == 0) return;
+        UITextButton actionButton = popup.Buttons[popup.Buttons.Length - 1];
+        int? ownTribe = match.Role == "host" ? match.HostTribe : match.AwayTribe;
+        int? opponentTribe = match.Role == "host" ? match.AwayTribe : match.HostTribe;
+        string? label = match.Status switch
+        {
+            "waiting_for_tribes" when !ownTribe.HasValue => "CHOOSE TRIBE",
+            "ready_to_start" when match.Role == "host" && ownTribe.HasValue && opponentTribe.HasValue => "START GAME",
+            "active" => active && activeMatchId == match.Id ? "GAME OPEN" : "OPEN GAME",
+            _ => null,
+        };
+        actionButton.gameObject.SetActive(label != null);
+        if (label != null)
+        {
+            actionButton.ButtonEnabled = true;
+            actionButton.text = label;
+        }
+    }
+
+    private static void RefreshIntegratedPlayerHeads(LobbyPopup popup, IntegratedMatch match)
+    {
+        if (popup.playerButtons == null || popup.presentedPlayers == null) return;
+        int count = Math.Min(popup.playerButtons.Count, popup.presentedPlayers.Count);
+        for (int index = 0; index < count; index++)
+        {
+            PlayerButton button = popup.playerButtons[index];
+            ParticipatorViewModel participator = popup.presentedPlayers[index];
+            string accountId = participator.UserId.ToString();
+            int? tribe = string.Equals(accountId, match.HostAccountId, StringComparison.OrdinalIgnoreCase)
+                ? match.HostTribe
+                : string.Equals(accountId, match.AwayAccountId, StringComparison.OrdinalIgnoreCase)
+                    ? match.AwayTribe
+                    : null;
+
+            try
+            {
+                button.BadgeEnabled = false;
+                if (button.badgeHolder != null) button.badgeHolder.gameObject.SetActive(false);
+                if (tribe.HasValue)
+                    LoadTribeHeadMethod?.Invoke(button, new object[] { (TribeType)tribe.Value });
+                else
+                    LoadTribelessHeadMethod?.Invoke(button, Array.Empty<object>());
+            }
+            catch (Exception exception)
+            {
+                if (!headRefreshWarningLogged)
+                {
+                    headRefreshWarningLogged = true;
+                    logger.LogWarning($"Could not repaint an Integrated lobby tribe head: {exception.Message}");
+                }
+            }
+        }
+    }
+
+    internal static void DescribeIntegratedLobby(LobbyPopup popup, ref string description)
+    {
+        if (!TryGetIntegratedLobby(popup.lobbyGameViewModel, out IntegratedMatch? match) || match == null) return;
+        int? ownTribe = match.Role == "host" ? match.HostTribe : match.AwayTribe;
+        int? opponentTribe = match.Role == "host" ? match.AwayTribe : match.HostTribe;
+        description = match.Status switch
+        {
+            "waiting_for_tribes" when !ownTribe.HasValue => "Choose your tribe to lock in your seat.",
+            "waiting_for_tribes" when !opponentTribe.HasValue => "Waiting for your opponent to choose a tribe.",
+            "ready_to_start" when match.Role == "host" => "Both tribes are locked. Start the game when ready.",
+            "ready_to_start" => "Both tribes are locked. Waiting for the host to start.",
+            "provisioning" => "The host is creating the Tiny Dryland map.",
+            "active" => "This Integrated game is in progress.",
+            _ => description,
+        };
     }
 
     internal static bool BlockIntegratedLobbyAction(LobbyPopup popup, string action)
     {
         if (!TryGetIntegratedLobby(popup.lobbyGameViewModel, out IntegratedMatch? match) || match == null) return true;
         int? ownTribe = match.Role == "host" ? match.HostTribe : match.AwayTribe;
+        int? opponentTribe = match.Role == "host" ? match.AwayTribe : match.HostTribe;
         if (action == "start" && !ownTribe.HasValue && match.Status == "waiting_for_tribes")
         {
             popup.Hide();
             OpenTribePicker(match.Id);
             return false;
         }
+        if (action == "start" && match.Status == "ready_to_start" && match.Role == "host" &&
+            ownTribe.HasValue && opponentTribe.HasValue)
+        {
+            popup.Hide();
+            _ = StartMatchAsync(match.Id);
+            return false;
+        }
+        if (action == "start" && match.Status == "active")
+        {
+            popup.Hide();
+            if (!active || activeMatchId != match.Id) _ = OpenMatchAsync(match.Id);
+            return false;
+        }
         string description = action switch
         {
             "invite" => "Both player seats are assigned by the Discord bot.",
             "leave" => "Manage or delete this Integrated match from its Discord game channel.",
-            _ when match.Status == "waiting_for_tribes" => "Your tribe is saved. Waiting for your opponent to choose theirs.",
-            _ => "The game starts automatically as soon as both players choose a tribe.",
+            _ when match.Status == "waiting_for_tribes" => "Waiting for both players to lock their tribes.",
+            _ when match.Status == "ready_to_start" => "Only the Discord game opener can start after both tribes are locked.",
+            _ => "This action is not available for the Integrated game right now.",
         };
         PopupManager.ShowSimplePopup("better-bop-integrated-lobby", "Integrated Game", description);
         return false;
     }
-
-    private static string TribeName(int? tribe) => tribe is >= 1 and < 18 ? TribeNames[tribe.Value] : "Not selected";
 
     private static int NativeMapSideLength(int tileCountOrSideLength)
     {
@@ -811,11 +870,7 @@ internal static class IntegratedModdedGames
 
     private static async Task SelectTribeAsync(string matchId, int tribe)
     {
-        if (await MutateMatchAsync(matchId, "tribe", new { tribe }).ConfigureAwait(false))
-        {
-            pendingAutoOpenMatchId = matchId;
-            await AdvancePendingMatchAsync().ConfigureAwait(false);
-        }
+        await MutateMatchAsync(matchId, "tribe", new { tribe }).ConfigureAwait(false);
     }
 
     private static async Task StartMatchAsync(string matchId)
@@ -885,24 +940,6 @@ internal static class IntegratedModdedGames
                 return;
             }
 
-            IntegratedMatch? legacyReady = matches.FirstOrDefault(item =>
-                item.Role == "host" && item.Status == "ready_to_start" && item.HostTribe.HasValue && item.AwayTribe.HasValue);
-            if (legacyReady != null)
-            {
-                await MutateMatchAsync(legacyReady.Id, "start", new { }).ConfigureAwait(false);
-                return;
-            }
-
-            if (!active && !string.IsNullOrWhiteSpace(pendingAutoOpenMatchId))
-            {
-                IntegratedMatch? activeMatch = matches.FirstOrDefault(item =>
-                    item.Id == pendingAutoOpenMatchId && item.Status == "active");
-                if (activeMatch != null)
-                {
-                    await ResumeParticipantAsync(activeMatch, await EnsureServerTokenAsync().ConfigureAwait(false)).ConfigureAwait(false);
-                    pendingAutoOpenMatchId = string.Empty;
-                }
-            }
         }
         catch (Exception exception)
         {
@@ -1065,7 +1102,6 @@ internal static class IntegratedModdedGames
         }).ConfigureAwait(false);
         pendingHostStateMatchId = string.Empty;
         pendingHostInitialState = null;
-        pendingAutoOpenMatchId = string.Empty;
         logger.LogMessage($"Hosted Integrated G{match.BotGameId} as Tiny Dryland game {match.GameId}.");
     }
 
@@ -1569,6 +1605,25 @@ internal static class IntegratedLobbyPopupStatePatch
     [HarmonyPostfix]
     private static void KeepDiscordSeatsOnly(LobbyPopup __instance) =>
         IntegratedModdedGames.RefreshIntegratedLobbyPopup(__instance);
+}
+
+[HarmonyPatch(typeof(BasicPopupLegacy), nameof(BasicPopupLegacy.RefreshButtonState))]
+internal static class IntegratedLobbyButtonStatePatch
+{
+    [HarmonyPostfix]
+    private static void KeepIntegratedActionGated(BasicPopupLegacy __instance)
+    {
+        LobbyPopup? popup = __instance.TryCast<LobbyPopup>();
+        if (popup != null) IntegratedModdedGames.RefreshIntegratedLobbyPopup(popup);
+    }
+}
+
+[HarmonyPatch(typeof(LobbyPopup), "PrepareGameInfo")]
+internal static class IntegratedLobbyDescriptionPatch
+{
+    [HarmonyPostfix]
+    private static void ShowIntegratedSetupState(LobbyPopup __instance, ref string __result) =>
+        IntegratedModdedGames.DescribeIntegratedLobby(__instance, ref __result);
 }
 
 [HarmonyPatch(typeof(LobbyPopup), "OnStartClicked")]

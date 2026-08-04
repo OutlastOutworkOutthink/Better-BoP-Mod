@@ -4,8 +4,8 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.5.22 keeps the locked gameplay baselines and uses Polytopia's native
-/// lobby, tribe picker, and map generator for automatically started games.
+/// Alpha 0.5.24 keeps the locked gameplay baselines and adds compact native
+/// advanced match settings for per-game cost and enemy-health handicaps.
 /// </summary>
 public static class Main
 {
@@ -20,6 +20,8 @@ public static class Main
         DiscordAccountLink.Initialize(logger);
         IntegratedModdedGames.Initialize(logger);
         UniversalPeaceRules.Logger = logger;
+        AdvancedMatchSettings.Initialize(logger);
+        HomeVersionLabel.Initialize(logger);
 
         SafePatch(typeof(OblivionCreativeModeListPatch), logger);
         SafePatch(typeof(OblivionClassicRenderedRowPatch), logger);
@@ -74,6 +76,8 @@ public static class Main
         SafePatch(typeof(IntegratedLobbyRowStatePatch), logger);
         SafePatch(typeof(IntegratedLobbyBadgePatch), logger);
         SafePatch(typeof(IntegratedLobbyPopupStatePatch), logger);
+        SafePatch(typeof(IntegratedLobbyButtonStatePatch), logger);
+        SafePatch(typeof(IntegratedLobbyDescriptionPatch), logger);
         SafePatch(typeof(IntegratedLobbyStartPatch), logger);
         SafePatch(typeof(IntegratedLobbyStartGamePatch), logger);
         SafePatch(typeof(IntegratedLobbyInvitePatch), logger);
@@ -95,7 +99,25 @@ public static class Main
         SafePatch(typeof(UniversalPeaceUnavailablePopupPatch), logger);
         SafePatch(typeof(UniversalPeaceAIPreparePatch), logger);
 
-        logger.LogMessage("Better BoP Alpha 0.5.22 loaded: recorded tribe choices plus verified stock 11x11 Tiny Dryland generation.");
+        SafePatch(typeof(AdvancedSettingsOnShowPatch), logger);
+        SafePatch(typeof(AdvancedSettingsLayoutPatch), logger);
+        SafePatch(typeof(AdvancedSettingsTogglePatch), logger);
+        SafePatch(typeof(AdvancedSettingsMultiplayerStartPatch), logger);
+        SafePatch(typeof(AdvancedSettingsMatchmakingStartPatch), logger);
+        SafePatch(typeof(AdvancedSettingsCreateSessionPatch), logger);
+        SafePatch(typeof(AdvancedSettingsOpenSessionPatch), logger);
+        SafePatch(typeof(AdvancedSettingsGameReadyPatch), logger);
+        SafePatch(typeof(AdvancedUnitCostPatch), logger);
+        SafePatch(typeof(AdvancedBuildingCostPatch), logger);
+        SafePatch(typeof(AdvancedEnemyHealthPatch), logger);
+        SafePatch(typeof(AdvancedEnemySpawnHealthPatch), logger);
+        SafePatch(typeof(AdvancedConvertedUnitHealthPatch), logger);
+        SafePatch(typeof(HomeVersionOnShowPatch), logger);
+        SafePatch(typeof(HomeVersionAfterLayoutPatch), logger);
+        SafePatch(typeof(HomeVersionLayoutPatch), logger);
+        SafePatch(typeof(HomeVersionRefreshPatch), logger);
+
+        logger.LogMessage("Better BoP Alpha 0.5.24 loaded: locked Integrated baseline plus native advanced multiplayer handicaps.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)
