@@ -4,8 +4,8 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.5.25 keeps the locked gameplay baselines and hardens the compact
-/// advanced match settings and home-screen version label against IL2CPP crashes.
+/// Alpha 0.6.0 keeps the locked gameplay baselines and replaces the remaining
+/// startup-sensitive version UI with one isolated text component.
 /// </summary>
 public static class Main
 {
@@ -116,9 +116,9 @@ public static class Main
         SafePatch(typeof(AdvancedEnemyHealthPatch), logger);
         SafePatch(typeof(AdvancedEnemySpawnHealthPatch), logger);
         SafePatch(typeof(AdvancedConvertedUnitHealthPatch), logger);
-        SafePatch(typeof(HomeVersionAfterLayoutPatch), logger);
+        SafePatch(typeof(HomeVersionInitPatch), logger);
 
-        logger.LogMessage("Better BoP Alpha 0.5.25 loaded: startup-safe version label and IL2CPP-safe multiplayer handicaps.");
+        logger.LogMessage("Better BoP Alpha 0.6.0 loaded: isolated version label and IL2CPP-safe multiplayer handicaps.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)

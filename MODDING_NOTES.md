@@ -190,7 +190,7 @@ the reference assemblies, not that the patched screen executed correctly.
   Discord completion, and unchanged Elo. A compile cannot prove native IL2CPP
   session/player ownership behavior.
 
-## Advanced multiplayer handicaps (Alpha 0.5.25)
+## Advanced multiplayer handicaps (Alpha 0.6.0)
 
 - Reuse `GameSetupScreen_UI2.advancedSettingsExpanded`, the stock horizontal
   list prefab, and `GameSetupScreenView.allComponents/allLists`. Reassert the
@@ -216,9 +216,15 @@ the reference assemblies, not that the patched screen executed correctly.
   Before publishing, test host and guest values, reopen persistence, all seven
   percentages, bot costs, roads/special improvements, spawning, conversion,
   healing, and narrow/wide setup layouts on the Windows game build.
-- Put the mod version beside the native home-screen version text where that
-  field exists, and clone a native text style as a bottom-right fallback. Patch
-  only `OnShowAfterLayout`, guard against re-entry, and avoid assigning text or
-  active state when unchanged. Patching `RunLayout` and then changing TMP text
-  can re-enter layout natively and terminate without a managed stack trace—the
-  exact Alpha 0.5.24 startup failure pattern.
+- Do not discover the home version label through `GetComponentsInChildren` and
+  do not clone a `TextField_UI2` object. Both approaches can terminate inside
+  native UI code without a managed exception. Alpha 0.6.0 creates one plain TMP
+  text object from `StartScreen_UI2.Init`, borrows only the known About-button
+  font/material, anchors it directly, and never calls the stock layout engine.
+
+## Release numbering
+
+- Keep all releases on **Alpha 0.6.X** until the project owner explicitly asks
+  to move to **Alpha 0.7**. Increment only the patch component after 0.6.0.
+- Every release must update `manifest.json`, `Main.cs`, `README.md`, the release
+  ZIP/tag, and `HomeVersionLabel.DisplayText` to the exact same version.
