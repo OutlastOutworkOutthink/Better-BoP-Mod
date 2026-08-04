@@ -13,8 +13,16 @@ grep -Fq '25, 50, 100, 150, 200, 300, 500' "$source_file"
 grep -Fq 'AdvancedSettingsOnShowPatch' "$source_file"
 grep -Fq 'AdvancedSettingsLayoutPatch' "$source_file"
 grep -Fq 'AdvancedSettingsTogglePatch' "$source_file"
-grep -Fq 'typeof(UnitData), "get_cost"' "$source_file"
-grep -Fq 'typeof(ImprovementData), "get_cost"' "$source_file"
+grep -Fq 'AdvancedUnitCostUiPatch' "$source_file"
+grep -Fq 'AdvancedUnitCostValidationPatch' "$source_file"
+grep -Fq 'AdvancedUnitCostExecutionPatch' "$source_file"
+grep -Fq 'AdvancedBuildingCostUiPatch' "$source_file"
+grep -Fq 'AdvancedBuildingCostValidationPatch' "$source_file"
+grep -Fq 'AdvancedBuildingCostExecutionPatch' "$source_file"
+grep -Fq 'BeginUnitCostScope' "$source_file"
+grep -Fq 'BeginBuildingCostScope' "$source_file"
+grep -Fq 'unitCostScopeDepth' "$source_file"
+grep -Fq 'buildingCostScopeDepth' "$source_file"
 grep -Fq 'nameof(UnitDataExtensions.GetMaxHealth)' "$source_file"
 grep -Fq 'AdvancedConvertedUnitHealthPatch' "$source_file"
 grep -Fq 'GameRulesKeyPrefix' "$source_file"
@@ -26,6 +34,11 @@ test $(( (3 * 50 + 99) / 100 )) -eq 2
 
 if grep -Fq '[HarmonyPatch(typeof(GameManager), "Update")]' "$source_file"; then
   echo "Advanced settings must not add per-frame GameManager work." >&2
+  exit 1
+fi
+
+if grep -Eq 'HarmonyPatch\(typeof\((UnitData|ImprovementData)\), "get_cost"' "$source_file"; then
+  echo "IL2CPP field accessors cannot be patched safely." >&2
   exit 1
 fi
 

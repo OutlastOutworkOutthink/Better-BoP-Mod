@@ -12,9 +12,10 @@ namespace BetterBoPMod;
 /// </summary>
 internal static class HomeVersionLabel
 {
-    internal const string DisplayText = "BBoP Alpha 0.5.24";
+    internal const string DisplayText = "BBoP Alpha 0.5.25";
     private const string ObjectName = "BetterBoP.HomeVersion";
     private static readonly Dictionary<IntPtr, LabelBinding> LabelsByScreen = new();
+    private static readonly HashSet<IntPtr> ScreensBeingBound = new();
     private static ManualLogSource logger = null!;
 
     internal static void Initialize(ManualLogSource logSource) => logger = logSource;
@@ -22,9 +23,11 @@ internal static class HomeVersionLabel
     internal static void Ensure(StartScreen_UI2? screen)
     {
         if (screen?.rectTransform == null) return;
+        IntPtr pointer = screen.Pointer;
+        if (pointer == IntPtr.Zero || !ScreensBeingBound.Add(pointer)) return;
         try
         {
-            if (LabelsByScreen.TryGetValue(screen.Pointer, out LabelBinding? existing) && existing.IsAlive)
+            if (LabelsByScreen.TryGetValue(pointer, out LabelBinding? existing) && existing.IsAlive)
             {
                 existing.Refresh();
                 return;
@@ -35,7 +38,7 @@ internal static class HomeVersionLabel
                 ? LabelBinding.ForNative(nativeVersion)
                 : CreateFallback(screen);
             if (!binding.IsAlive) return;
-            LabelsByScreen[screen.Pointer] = binding;
+            LabelsByScreen[pointer] = binding;
             binding.Refresh();
             logger.LogInfo(nativeVersion != null
                 ? $"Added {DisplayText} to the native home-screen version text."
@@ -44,6 +47,10 @@ internal static class HomeVersionLabel
         catch (Exception exception)
         {
             logger.LogWarning($"Could not add the home-screen mod version yet: {exception.Message}");
+        }
+        finally
+        {
+            ScreensBeingBound.Remove(pointer);
         }
     }
 
@@ -113,14 +120,15 @@ internal static class HomeVersionLabel
             if (!IsAlive) return;
             if (!native)
             {
-                field!.text = DisplayText;
-                field.gameObject.SetActive(true);
+                if (!string.Equals(field!.text, DisplayText, StringComparison.Ordinal)) field.text = DisplayText;
+                if (!field.gameObject.activeSelf) field.gameObject.SetActive(true);
                 return;
             }
 
             string current = Clean(field!.text);
             if (!string.IsNullOrWhiteSpace(current)) nativeText = current;
-            field.text = string.IsNullOrWhiteSpace(nativeText) ? DisplayText : $"{nativeText}\n{DisplayText}";
+            string desired = string.IsNullOrWhiteSpace(nativeText) ? DisplayText : $"{nativeText}\n{DisplayText}";
+            if (!string.Equals(field.text, desired, StringComparison.Ordinal)) field.text = desired;
         }
 
         private static string Clean(string? value)
@@ -132,29 +140,8 @@ internal static class HomeVersionLabel
     }
 }
 
-[HarmonyPatch(typeof(StartScreen_UI2), "OnShow")]
-internal static class HomeVersionOnShowPatch
-{
-    [HarmonyPostfix]
-    private static void AddVersion(StartScreen_UI2 __instance) => HomeVersionLabel.Ensure(__instance);
-}
-
 [HarmonyPatch(typeof(StartScreen_UI2), "OnShowAfterLayout")]
 internal static class HomeVersionAfterLayoutPatch
-{
-    [HarmonyPostfix]
-    private static void AddVersion(StartScreen_UI2 __instance) => HomeVersionLabel.Ensure(__instance);
-}
-
-[HarmonyPatch(typeof(StartScreen_UI2), "RunLayout")]
-internal static class HomeVersionLayoutPatch
-{
-    [HarmonyPostfix]
-    private static void AddVersion(StartScreen_UI2 __instance) => HomeVersionLabel.Ensure(__instance);
-}
-
-[HarmonyPatch(typeof(StartScreen_UI2), "RefreshVersionInfo")]
-internal static class HomeVersionRefreshPatch
 {
     [HarmonyPostfix]
     private static void AddVersion(StartScreen_UI2 __instance) => HomeVersionLabel.Ensure(__instance);

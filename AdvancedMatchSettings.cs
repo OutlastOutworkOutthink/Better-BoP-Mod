@@ -37,6 +37,8 @@ internal static class AdvancedMatchSettings
     private static RuleSet activeRules = RuleSet.Default;
     private static byte activeRulesOwner = byte.MaxValue;
     private static bool hasActiveRulesOwner;
+    [ThreadStatic] private static int unitCostScopeDepth;
+    [ThreadStatic] private static int buildingCostScopeDepth;
     private static DateTime pendingSinceUtc;
     private static bool pending;
 
@@ -173,20 +175,70 @@ internal static class AdvancedMatchSettings
         if (screen?.view != null && IsMultiplayerSetup()) screen.view.RunLayout(screenSize);
     }
 
-    internal static int ScaleUnitCost(int value)
+    internal static UnitCostScope BeginUnitCostScope(GameState? state, UnitData.Type? only = null)
     {
-        GameState? state = GameManager.GameState;
-        return state != null && IsRulesOwnerTurn(state)
-            ? Scale(value, activeRules.UnitCostPercent)
-            : value;
+        UnitCostScope scope = new();
+        if (state?.GameLogicData == null || !IsRulesOwnerTurn(state) || activeRules.UnitCostPercent == 100)
+            return scope;
+        if (unitCostScopeDepth != 0) return scope;
+        unitCostScopeDepth = 1;
+        scope.OwnsScope = true;
+
+        HashSet<IntPtr> seen = new();
+        IEnumerable<UnitData.Type> types = only.HasValue
+            ? new[] { only.Value }
+            : Enum.GetValues(typeof(UnitData.Type)).Cast<UnitData.Type>();
+        foreach (UnitData.Type type in types)
+        {
+            try
+            {
+                UnitData? data = state.GameLogicData.GetUnitData(type);
+                if (data == null || data.Pointer == IntPtr.Zero || !seen.Add(data.Pointer)) continue;
+                int original = data.cost;
+                int scaled = Scale(original, activeRules.UnitCostPercent);
+                if (scaled == original) continue;
+                scope.Add(data, original);
+                data.cost = scaled;
+            }
+            catch
+            {
+                // Some enum values are intentionally absent for particular rulesets.
+            }
+        }
+        return scope;
     }
 
-    internal static int ScaleBuildingCost(int value)
+    internal static BuildingCostScope BeginBuildingCostScope(GameState? state, ImprovementData.Type? only = null)
     {
-        GameState? state = GameManager.GameState;
-        return state != null && IsRulesOwnerTurn(state)
-            ? Scale(value, activeRules.BuildingCostPercent)
-            : value;
+        BuildingCostScope scope = new();
+        if (state?.GameLogicData == null || !IsRulesOwnerTurn(state) || activeRules.BuildingCostPercent == 100)
+            return scope;
+        if (buildingCostScopeDepth != 0) return scope;
+        buildingCostScopeDepth = 1;
+        scope.OwnsScope = true;
+
+        HashSet<IntPtr> seen = new();
+        IEnumerable<ImprovementData.Type> types = only.HasValue
+            ? new[] { only.Value }
+            : Enum.GetValues(typeof(ImprovementData.Type)).Cast<ImprovementData.Type>();
+        foreach (ImprovementData.Type type in types)
+        {
+            try
+            {
+                ImprovementData? data = state.GameLogicData.GetImprovementData(type);
+                if (data == null || data.Pointer == IntPtr.Zero || !seen.Add(data.Pointer)) continue;
+                int original = data.cost;
+                int scaled = Scale(original, activeRules.BuildingCostPercent);
+                if (scaled == original) continue;
+                scope.Add(data, original);
+                data.cost = scaled;
+            }
+            catch
+            {
+                // Some enum values are intentionally absent for particular rulesets.
+            }
+        }
+        return scope;
     }
 
     internal static int ScaleEnemyMaxHealth(int value, UnitState? unit, GameState? state)
@@ -444,6 +496,46 @@ internal static class AdvancedMatchSettings
         internal bool IsValid => Health > 0 && Maximum > 0;
     }
 
+    internal sealed class UnitCostScope
+    {
+        private readonly List<(UnitData Data, int Cost)> entries = new();
+        private bool restored;
+        internal bool OwnsScope { private get; set; }
+        internal void Add(UnitData data, int cost) => entries.Add((data, cost));
+        internal void Restore()
+        {
+            if (restored) return;
+            restored = true;
+            foreach ((UnitData data, int cost) in entries)
+            {
+                try { if (data != null && data.Pointer != IntPtr.Zero) data.cost = cost; }
+                catch { }
+            }
+            entries.Clear();
+            if (OwnsScope) unitCostScopeDepth = 0;
+        }
+    }
+
+    internal sealed class BuildingCostScope
+    {
+        private readonly List<(ImprovementData Data, int Cost)> entries = new();
+        private bool restored;
+        internal bool OwnsScope { private get; set; }
+        internal void Add(ImprovementData data, int cost) => entries.Add((data, cost));
+        internal void Restore()
+        {
+            if (restored) return;
+            restored = true;
+            foreach ((ImprovementData data, int cost) in entries)
+            {
+                try { if (data != null && data.Pointer != IntPtr.Zero) data.cost = cost; }
+                catch { }
+            }
+            entries.Clear();
+            if (OwnsScope) buildingCostScopeDepth = 0;
+        }
+    }
+
     private static int UnitIndex() => ReadIndex(UnitSelectionKey);
     private static int BuildingIndex() => ReadIndex(BuildingSelectionKey);
     private static int EnemyHealthIndex() => ReadIndex(EnemyHealthSelectionKey);
@@ -588,18 +680,94 @@ internal static class AdvancedSettingsGameReadyPatch
     private static void AttachDeferredRules() => AdvancedMatchSettings.CapturePendingRulesFromCurrentGame();
 }
 
-[HarmonyPatch(typeof(UnitData), "get_cost")]
-internal static class AdvancedUnitCostPatch
+[HarmonyPatch(typeof(InteractionBar), "AddTrainUnitButtons")]
+internal static class AdvancedUnitCostUiPatch
 {
-    [HarmonyPostfix]
-    private static void ScaleCost(ref int __result) => __result = AdvancedMatchSettings.ScaleUnitCost(__result);
+    [HarmonyPrefix]
+    private static void Apply(out AdvancedMatchSettings.UnitCostScope __state) =>
+        __state = AdvancedMatchSettings.BeginUnitCostScope(GameManager.GameState);
+
+    [HarmonyFinalizer]
+    private static Exception? Restore(Exception? __exception, AdvancedMatchSettings.UnitCostScope __state)
+    {
+        __state?.Restore();
+        return __exception;
+    }
 }
 
-[HarmonyPatch(typeof(ImprovementData), "get_cost")]
-internal static class AdvancedBuildingCostPatch
+[HarmonyPatch(typeof(TrainCommand), nameof(TrainCommand.IsValid))]
+internal static class AdvancedUnitCostValidationPatch
 {
-    [HarmonyPostfix]
-    private static void ScaleCost(ref int __result) => __result = AdvancedMatchSettings.ScaleBuildingCost(__result);
+    [HarmonyPrefix]
+    private static void Apply(TrainCommand __instance, GameState state, out AdvancedMatchSettings.UnitCostScope __state) =>
+        __state = AdvancedMatchSettings.BeginUnitCostScope(state, __instance.Type);
+
+    [HarmonyFinalizer]
+    private static Exception? Restore(Exception? __exception, AdvancedMatchSettings.UnitCostScope __state)
+    {
+        __state?.Restore();
+        return __exception;
+    }
+}
+
+[HarmonyPatch(typeof(TrainCommand), nameof(TrainCommand.Execute))]
+internal static class AdvancedUnitCostExecutionPatch
+{
+    [HarmonyPrefix]
+    private static void Apply(TrainCommand __instance, GameState state, out AdvancedMatchSettings.UnitCostScope __state) =>
+        __state = AdvancedMatchSettings.BeginUnitCostScope(state, __instance.Type);
+
+    [HarmonyFinalizer]
+    private static Exception? Restore(Exception? __exception, AdvancedMatchSettings.UnitCostScope __state)
+    {
+        __state?.Restore();
+        return __exception;
+    }
+}
+
+[HarmonyPatch(typeof(InteractionBar), "RefreshBuildingOptions")]
+internal static class AdvancedBuildingCostUiPatch
+{
+    [HarmonyPrefix]
+    private static void Apply(out AdvancedMatchSettings.BuildingCostScope __state) =>
+        __state = AdvancedMatchSettings.BeginBuildingCostScope(GameManager.GameState);
+
+    [HarmonyFinalizer]
+    private static Exception? Restore(Exception? __exception, AdvancedMatchSettings.BuildingCostScope __state)
+    {
+        __state?.Restore();
+        return __exception;
+    }
+}
+
+[HarmonyPatch(typeof(BuildCommand), nameof(BuildCommand.IsValid))]
+internal static class AdvancedBuildingCostValidationPatch
+{
+    [HarmonyPrefix]
+    private static void Apply(BuildCommand __instance, GameState state, out AdvancedMatchSettings.BuildingCostScope __state) =>
+        __state = AdvancedMatchSettings.BeginBuildingCostScope(state, __instance.Type);
+
+    [HarmonyFinalizer]
+    private static Exception? Restore(Exception? __exception, AdvancedMatchSettings.BuildingCostScope __state)
+    {
+        __state?.Restore();
+        return __exception;
+    }
+}
+
+[HarmonyPatch(typeof(BuildCommand), nameof(BuildCommand.Execute))]
+internal static class AdvancedBuildingCostExecutionPatch
+{
+    [HarmonyPrefix]
+    private static void Apply(BuildCommand __instance, GameState state, out AdvancedMatchSettings.BuildingCostScope __state) =>
+        __state = AdvancedMatchSettings.BeginBuildingCostScope(state, __instance.Type);
+
+    [HarmonyFinalizer]
+    private static Exception? Restore(Exception? __exception, AdvancedMatchSettings.BuildingCostScope __state)
+    {
+        __state?.Restore();
+        return __exception;
+    }
 }
 
 [HarmonyPatch(typeof(UnitDataExtensions), nameof(UnitDataExtensions.GetMaxHealth))]

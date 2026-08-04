@@ -4,8 +4,8 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.5.24 keeps the locked gameplay baselines and adds compact native
-/// advanced match settings for per-game cost and enemy-health handicaps.
+/// Alpha 0.5.25 keeps the locked gameplay baselines and hardens the compact
+/// advanced match settings and home-screen version label against IL2CPP crashes.
 /// </summary>
 public static class Main
 {
@@ -107,17 +107,18 @@ public static class Main
         SafePatch(typeof(AdvancedSettingsCreateSessionPatch), logger);
         SafePatch(typeof(AdvancedSettingsOpenSessionPatch), logger);
         SafePatch(typeof(AdvancedSettingsGameReadyPatch), logger);
-        SafePatch(typeof(AdvancedUnitCostPatch), logger);
-        SafePatch(typeof(AdvancedBuildingCostPatch), logger);
+        SafePatch(typeof(AdvancedUnitCostUiPatch), logger);
+        SafePatch(typeof(AdvancedUnitCostValidationPatch), logger);
+        SafePatch(typeof(AdvancedUnitCostExecutionPatch), logger);
+        SafePatch(typeof(AdvancedBuildingCostUiPatch), logger);
+        SafePatch(typeof(AdvancedBuildingCostValidationPatch), logger);
+        SafePatch(typeof(AdvancedBuildingCostExecutionPatch), logger);
         SafePatch(typeof(AdvancedEnemyHealthPatch), logger);
         SafePatch(typeof(AdvancedEnemySpawnHealthPatch), logger);
         SafePatch(typeof(AdvancedConvertedUnitHealthPatch), logger);
-        SafePatch(typeof(HomeVersionOnShowPatch), logger);
         SafePatch(typeof(HomeVersionAfterLayoutPatch), logger);
-        SafePatch(typeof(HomeVersionLayoutPatch), logger);
-        SafePatch(typeof(HomeVersionRefreshPatch), logger);
 
-        logger.LogMessage("Better BoP Alpha 0.5.24 loaded: locked Integrated baseline plus native advanced multiplayer handicaps.");
+        logger.LogMessage("Better BoP Alpha 0.5.25 loaded: startup-safe version label and IL2CPP-safe multiplayer handicaps.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)
