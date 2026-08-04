@@ -189,3 +189,27 @@ the reference assemblies, not that the patched screen executed correctly.
   direction, reopen, resignation, capital capture,
   Discord completion, and unchanged Elo. A compile cannot prove native IL2CPP
   session/player ownership behavior.
+
+## Advanced multiplayer handicaps (Alpha 0.5.24)
+
+- Reuse `GameSetupScreen_UI2.advancedSettingsExpanded`, the stock horizontal
+  list prefab, and `GameSetupScreenView.allComponents/allLists`. Reassert the
+  rows from `OnShow`, both sides of `RunLayout`, and the advanced-toggle click;
+  setup screens rebuild and reset child visibility at more than one boundary.
+- Snapshot the three selected percentages when the host creates the game.
+  Persist by game ID and embed a compact validated marker in `GameName` so a
+  modded peer reads the same deterministic rules. Only strip a marker after all
+  three encoded indexes validate, or a legitimate game name could be cut.
+- Use the shared `UnitData.cost`, `ImprovementData.cost`, and
+  `UnitDataExtensions.GetMaxHealth` accessors. Cache the rules and immutable
+  rules owner when a session opens; hot cost/health access then needs only an
+  owner comparison and integer ceiling math, never PlayerPrefs or a frame scan.
+- Enemy units need their scaled current health filled when created. Conversion
+  is a separate ownership transition: preserve the unit's health percentage
+  across `ConvertAction.Execute`, then adopt the maximum appropriate to its new
+  owner. Otherwise converted enemies can retain health above the friendly cap.
+- A clean build does not prove that a backend preserves invisible game-name
+  code points or that cloned UI rows survive every shipped prefab revision.
+  Before publishing, test host and guest values, reopen persistence, all seven
+  percentages, bot costs, roads/special improvements, spawning, conversion,
+  healing, and narrow/wide setup layouts on the Windows game build.

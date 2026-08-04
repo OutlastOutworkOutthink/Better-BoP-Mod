@@ -1,4 +1,4 @@
-# Better Battle of Polytopia Mod — Alpha 0.5.23
+# Better Battle of Polytopia Mod — Alpha 0.5.24
 
 This Alpha keeps the working Oblivion, Discord integration, and universal-peace
 behavior locked, then adds the isolated client for bot-created Modded games.
@@ -9,7 +9,7 @@ All other earlier gameplay and experimental UI changes remain inactive.
 Open **Creative**, continue to tribe/game setup, and select **Oblivion** in the
 same rule row as **Perfection**, **Domination**, and **Infinity**.
 
-Alpha 0.5.23 retains both the visible legacy setup row and UI2's later layout
+Alpha 0.5.24 retains both the visible legacy setup row and UI2's later layout
 callbacks, after Polytopia has actually created the game-mode controls.
 
 Oblivion keeps all normal Creative setup choices, but the match itself uses
@@ -60,7 +60,7 @@ from Strategy's unlock list and is shown as available in tribe information even
 before Strategy is researched. Sending a request no longer opens the obsolete
 Strategy warning after the request is sent.
 
-Alpha 0.5.23 retains the legacy tribe-info fix that replaces separate enabled and
+Alpha 0.5.24 retains the legacy tribe-info fix that replaces separate enabled and
 disabled callbacks with one deduplicated peace action. The icon therefore uses
 its available appearance and a click cannot also reach the old Strategy popup.
 
@@ -96,13 +96,39 @@ The private Better BoP server stores the initial state and ordered command bytes
 then reports an agreed in-game winner to the bot after resignation or capital
 capture. It does not collect a Polytopia or Steam password.
 
-The permanent Discord link is identity only. Alpha 0.5.23 separately proves its
+The permanent Discord link is identity only. Alpha 0.5.24 separately proves its
 current compatible ruleset to the multiplayer server, so players do not need to
 relink Discord for every future release.
 
 When no match is active, the tab displays **You have no active modded games.**
 The Tournaments bubble is hidden while Modded is selected and restored when the
 player returns to Ongoing/Replays or leaves Multiplayer.
+
+## Advanced multiplayer settings
+
+Multiplayer game setup now keeps Polytopia's native collapsible control with the
+exact labels **Show Advanced Settings** and **Hide Advanced Settings**. Expanding
+it displays three native percentage rows. Every row offers **25%**, **50%**,
+**100%** (default), **150%**, **200%**, **300%**, and **500%**:
+
+- **Unit cost multiplayer** multiplies the rules owner's training prices and
+  rounds upward. Bots retain normal prices. At 500%, a 2-star Warrior costs 10
+  stars and an 8-star Knight costs 40.
+- **Building cost multiplier** applies the same rounded calculation to every
+  paid tile interaction for the rules owner. Because this uses Polytopia's
+  common improvement cost, it covers roads and special-tribe buildings such as
+  algae and outposts without separate per-building patches.
+- **Enemy unit health** multiplies every opposing unit's maximum health. At
+  500%, a unit with 100 internal maximum health has 500 internally and displays
+  as 50 HP in the game. Converted units preserve their health percentage while
+  immediately adopting the correct maximum for their new owner.
+
+The selected percentages are snapshotted when a new multiplayer game is
+created, so changing the setup defaults does not rewrite older games. A compact
+invisible marker is embedded in the native multiplayer settings for modded
+clients, while a game-ID cache preserves the values across restarts.
+Rendering is restored from the setup screen's show, layout, and toggle
+lifecycles; gameplay uses shared getters and performs no per-frame scans.
 
 ## Inactive archive
 
@@ -112,7 +138,7 @@ explicitly excluded from `BetterBoPMod.dll`. See
 
 ## Install
 
-Download the Alpha 0.5.23 release ZIP, extract it, and place the
+Download the Alpha 0.5.24 release ZIP, extract it, and place the
 `Better-BoP-Mod` folder directly inside Polytopia's `Mods` directory. These files
 must be together at that folder's top level:
 
@@ -128,7 +154,7 @@ converted into Oblivion games.
 The BepInEx log confirms a successful load with:
 
 ```text
-Better BoP Alpha 0.5.23 loaded: vanilla-style one-time tribe setup plus verified stock 11x11 Tiny Dryland generation.
+Better BoP Alpha 0.5.24 loaded: locked Integrated baseline plus native advanced multiplayer handicaps.
 ```
 
 ## Development
