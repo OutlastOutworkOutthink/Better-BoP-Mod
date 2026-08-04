@@ -190,7 +190,7 @@ the reference assemblies, not that the patched screen executed correctly.
   Discord completion, and unchanged Elo. A compile cannot prove native IL2CPP
   session/player ownership behavior.
 
-## Advanced match handicaps (Alpha 0.6.1)
+## Advanced match handicaps (Alpha 0.6.2)
 
 - Reuse `GameSetupScreen_UI2.advancedSettingsExpanded`, the stock horizontal
   list prefab, and `GameSetupScreenView.allComponents/allLists`. Reassert the
@@ -222,12 +222,13 @@ the reference assemblies, not that the patched screen executed correctly.
 - The handicap UI must include `GameType.SinglePlayer`; Creative/Oblivion uses
   that type. Restricting it to network types silently removes both the stock
   advanced toggle and all three rows from the Creative setup screen.
-- Do not discover the home version label through `GetComponentsInChildren` and
-  do not clone a `TextField_UI2` object. Both approaches can terminate inside
-  native UI code without a managed exception. Alpha 0.6.1 creates one plain TMP
-  text object, borrows only the known About-button font/material, anchors it
-  directly, and never calls the stock layout engine. `Init` may precede usable
-  serialized button fonts, so retry idempotently from `OnShowAfterLayout`.
+- Do not discover the home version label through `GetComponentsInChildren`,
+  clone a `TextField_UI2`, or create a TMP component at runtime. All three can
+  terminate inside native UI code without a managed exception. A Harmony
+  postfix argument must also use the original parameter name (`transform`) or
+  an indexed Harmony argument; `rectTransform` caused patch compilation to
+  fail in Alpha 0.6.1. Alpha 0.6.2 creates nothing: after the stock layout it
+  appends the build string to the existing About label.
 - Lobby readiness must be calculated from both nullable tribe selections, not
   merely the server status or two accepted Discord seats. Write the result to
   `LobbyPopup.Description` after `SetData`/`RefreshPopup` so the native
