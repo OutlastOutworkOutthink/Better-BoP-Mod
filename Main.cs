@@ -21,6 +21,7 @@ public static class Main
         IntegratedModdedGames.Initialize(logger);
         UniversalPeaceRules.Logger = logger;
         AdvancedMatchSettings.Initialize(logger);
+        HomeVersionLabel.Initialize(logger);
 
         SafePatch(typeof(OblivionCreativeModeListPatch), logger);
         SafePatch(typeof(OblivionClassicRenderedRowPatch), logger);
@@ -111,6 +112,10 @@ public static class Main
         SafePatch(typeof(AdvancedEnemyHealthPatch), logger);
         SafePatch(typeof(AdvancedEnemySpawnHealthPatch), logger);
         SafePatch(typeof(AdvancedConvertedUnitHealthPatch), logger);
+        SafePatch(typeof(HomeVersionOnShowPatch), logger);
+        SafePatch(typeof(HomeVersionAfterLayoutPatch), logger);
+        SafePatch(typeof(HomeVersionLayoutPatch), logger);
+        SafePatch(typeof(HomeVersionRefreshPatch), logger);
 
         logger.LogMessage("Better BoP Alpha 0.5.24 loaded: locked Integrated baseline plus native advanced multiplayer handicaps.");
     }

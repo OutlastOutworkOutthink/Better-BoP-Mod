@@ -213,3 +213,8 @@ the reference assemblies, not that the patched screen executed correctly.
   Before publishing, test host and guest values, reopen persistence, all seven
   percentages, bot costs, roads/special improvements, spawning, conversion,
   healing, and narrow/wide setup layouts on the Windows game build.
+- Put the mod version beside the native home-screen version text where that
+  field exists, and clone a native text style as a bottom-right fallback. Patch
+  `OnShow`, `OnShowAfterLayout`, `RunLayout`, and `RefreshVersionInfo`; the
+  latter may overwrite appended text after the screen first appears. This adds
+  no update-loop or polling work.

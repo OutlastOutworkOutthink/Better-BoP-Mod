@@ -130,6 +130,9 @@ clients, while a game-ID cache preserves the values across restarts.
 Rendering is restored from the setup screen's show, layout, and toggle
 lifecycles; gameplay uses shared getters and performs no per-frame scans.
 
+The home screen displays **BBoP Alpha 0.5.24** in its bottom-right version area,
+making it easy to confirm which Better BoP build is currently loaded.
+
 ## Inactive archive
 
 The previous mod source remains in the repository for reference, but is
