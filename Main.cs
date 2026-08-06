@@ -4,8 +4,9 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.6.2 keeps the locked gameplay baselines and replaces the unsafe
-/// home-screen component creation with a native About-label update.
+/// Alpha 0.6.3 keeps the locked gameplay baselines and removes all hooks from
+/// Polytopia's native home-screen lifecycle after Alpha 0.6.2 still caused a
+/// native IL2CPP crash immediately after StartScreen.Init().
 /// </summary>
 public static class Main
 {
@@ -21,7 +22,6 @@ public static class Main
         IntegratedModdedGames.Initialize(logger);
         UniversalPeaceRules.Logger = logger;
         AdvancedMatchSettings.Initialize(logger);
-        HomeVersionLabel.Initialize(logger);
 
         SafePatch(typeof(OblivionCreativeModeListPatch), logger);
         SafePatch(typeof(OblivionClassicRenderedRowPatch), logger);
@@ -117,9 +117,7 @@ public static class Main
         SafePatch(typeof(AdvancedEnemyHealthPatch), logger);
         SafePatch(typeof(AdvancedEnemySpawnHealthPatch), logger);
         SafePatch(typeof(AdvancedConvertedUnitHealthPatch), logger);
-        SafePatch(typeof(HomeVersionShowPatch), logger);
-
-        logger.LogMessage("Better BoP Alpha 0.6.2 loaded: startup-safe version text, advanced handicaps, and accurate lobby readiness.");
+        logger.LogMessage("Better BoP Alpha 0.6.3 loaded: home-screen hooks removed, advanced handicaps retained, and accurate lobby readiness.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)
