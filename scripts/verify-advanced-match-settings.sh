@@ -13,7 +13,13 @@ grep -Fq '25, 50, 100, 150, 200, 300, 500' "$source_file"
 grep -Fq 'AdvancedSettingsOnShowPatch' "$source_file"
 grep -Fq 'AdvancedSettingsLayoutPatch' "$source_file"
 grep -Fq 'AdvancedSettingsViewLayoutPatch' "$source_file"
-grep -Fq 'AdvancedSettingsTogglePatch' "$source_file"
+grep -Fq 'ToggleName = "BetterBoP.AdvancedSettingsToggle"' "$source_file"
+grep -Fq 'UILibrary.NewLabelButton(holder)' "$source_file"
+grep -Fq 'BindToggle(screen, controls)' "$source_file"
+grep -Fq 'controls.Toggle.ClearCallbacks();' "$source_file"
+grep -Fq 'controls.Toggle.OnClickedSignal.Add(controls.ToggleAction);' "$source_file"
+grep -Fq 'controls.ToggleAction = DelegateSupport.ConvertDelegate<Il2CppSystem.Action>' "$source_file"
+grep -Fq 'private static void ToggleAdvanced(GameSetupScreen_UI2 screen)' "$source_file"
 grep -Fq 'UILibrary.NewHorizontalList(holder)' "$source_file"
 grep -Fq 'UILibrary.NewText(holder, text)' "$source_file"
 grep -Fq 'ControlsByHolder' "$source_file"
@@ -26,9 +32,23 @@ grep -Fq 'view.whatToShow |= GameSetupScreenView.Show.MapTypeList' "$source_file
 grep -Fq 'view.whatToShow |= GameSetupScreenView.Show.MapSizeList' "$source_file"
 grep -Fq 'view.whatToShow &= ~GameSetupScreenView.Show.MapTypeList' "$source_file"
 grep -Fq 'view.whatToShow &= ~GameSetupScreenView.Show.MapSizeList' "$source_file"
-grep -Fq 'view.whatToShow |= GameSetupScreenView.Show.AdvancedSettingsToggle' "$source_file"
+grep -Fq 'view.whatToShow &= ~GameSetupScreenView.Show.AdvancedSettingsToggle' "$source_file"
+grep -Fq 'FindComponentIndex(view, view.continueButton)' "$source_file"
+grep -Fq 'NormalizeSiblingOrder' "$source_file"
+grep -Fq 'transform.SetSiblingIndex(view.holder.childCount - 1)' "$source_file"
+grep -Fq 'transform.SetSiblingIndex(continueTransform.GetSiblingIndex())' "$source_file"
 grep -Fq 'PrepareViewLayout' "$source_file"
-grep -Fq 'screen.advancedSettingsExpanded == previouslyExpanded' "$source_file"
+grep -Fq 'FinalizeViewLayout' "$source_file"
+grep -Fq 'AdvancedSettingsScrollerLayoutPatch' "$source_file"
+grep -Fq 'CaptureNativeScrollerHeight' "$source_file"
+grep -Fq '[HarmonyPriority(Priority.Last)]' "$source_file"
+grep -Fq 'float oldContinueTop = view.continueButton.GetTop();' "$source_file"
+grep -Fq 'controls.Toggle.SetPositionTopY(controls.Toggle.GetX(), cursorTop)' "$source_file"
+grep -Fq 'row.SetPositionTopY(row.GetX(), cursorTop)' "$source_file"
+grep -Fq 'view.continueButton.SetPositionTopY(view.continueButton.GetX(), cursorTop)' "$source_file"
+grep -Fq 'nativeContentHeight + addedHeight' "$source_file"
+grep -Fq 'scroller.UpdateContentBounds();' "$source_file"
+grep -Fq 'screen.advancedSettingsExpanded = controls.Expanded;' "$source_file"
 grep -Fq 'screen.UpdateLayout();' "$source_file"
 grep -Fq 'GameType.SinglePlayer' "$source_file"
 grep -Fq 'AdvancedSettingsSingleplayerStartPatch' "$source_file"
@@ -74,6 +94,16 @@ fi
 
 if grep -Fq 'RefreshVisibilityAfterLayout' "$source_file"; then
   echo "Advanced rows must be made visible before native view layout, not afterward." >&2
+  exit 1
+fi
+
+if grep -Fq 'AdvancedSettingsTogglePatch' "$source_file"; then
+  echo "Advanced settings must use the directly wired Better BoP toggle, not the variant-dependent native callback." >&2
+  exit 1
+fi
+
+if grep -Fq 'SetShowAdvancedSettingsToggleButton' "$source_file"; then
+  echo "Advanced settings must not reactivate Polytopia's fixed pre-map toggle." >&2
   exit 1
 fi
 
