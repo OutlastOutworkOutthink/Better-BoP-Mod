@@ -1,4 +1,4 @@
-# Better Battle of Polytopia Mod — Alpha 0.6.3
+# Better Battle of Polytopia Mod — Alpha 0.6.4
 
 This Alpha keeps the working Oblivion, Discord integration, and universal-peace
 behavior locked, then adds the isolated client for bot-created Modded games.
@@ -9,7 +9,7 @@ All other earlier gameplay and experimental UI changes remain inactive.
 Open **Creative**, continue to tribe/game setup, and select **Oblivion** in the
 same rule row as **Perfection**, **Domination**, and **Infinity**.
 
-Alpha 0.6.3 retains both the visible legacy setup row and UI2's later layout
+Alpha 0.6.4 retains both the visible legacy setup row and UI2's later layout
 callbacks, after Polytopia has actually created the game-mode controls.
 
 Oblivion keeps all normal Creative setup choices, but the match itself uses
@@ -60,7 +60,7 @@ from Strategy's unlock list and is shown as available in tribe information even
 before Strategy is researched. Sending a request no longer opens the obsolete
 Strategy warning after the request is sent.
 
-Alpha 0.6.3 retains the legacy tribe-info fix that replaces separate enabled and
+Alpha 0.6.4 retains the legacy tribe-info fix that replaces separate enabled and
 disabled callbacks with one deduplicated peace action. The icon therefore uses
 its available appearance and a click cannot also reach the old Strategy popup.
 
@@ -96,7 +96,7 @@ The private Better BoP server stores the initial state and ordered command bytes
 then reports an agreed in-game winner to the bot after resignation or capital
 capture. It does not collect a Polytopia or Steam password.
 
-The permanent Discord link is identity only. Alpha 0.6.3 separately proves its
+The permanent Discord link is identity only. Alpha 0.6.4 separately proves its
 current compatible ruleset to the multiplayer server, so players do not need to
 relink Discord for every future release.
 
@@ -106,16 +106,17 @@ player returns to Ongoing/Replays or leaves Multiplayer.
 
 ## Advanced match settings
 
-Creative/Oblivion and multiplayer game setup keep Polytopia's native
+Creative/Oblivion and multiplayer game setup keep Polytopia's native Map Type
+and Map Size rows above the advanced section. They then use Polytopia's native
 collapsible control with the exact labels **Show Advanced Settings** and **Hide
 Advanced Settings**. Expanding it displays three native percentage rows. Every
 row offers **25%**, **50%**, **100%** (default), **150%**, **200%**, **300%**, and
 **500%**:
 
-- **Unit cost multiplayer** multiplies the rules owner's training prices and
+- **Unit cost for you** multiplies the rules owner's training prices and
   rounds upward. Bots retain normal prices. At 500%, a 2-star Warrior costs 10
   stars and an 8-star Knight costs 40.
-- **Building cost multiplier** applies the same rounded calculation to every
+- **Your building cost** applies the same rounded calculation to every
   paid tile interaction for the rules owner. Because this uses Polytopia's
   common improvement cost, it covers roads and special-tribe buildings such as
   algae and outposts without separate per-building patches.
@@ -128,13 +129,14 @@ The selected percentages are snapshotted when a supported game is created, so
 changing the setup defaults does not rewrite older games. Network games embed a
 compact invisible marker for modded clients, while a game-ID cache preserves
 the values across restarts.
-Rendering is restored from the setup screen's show, layout, and toggle
-lifecycles. Price changes use short-lived scopes around Polytopia's native
+Each list and its description has its own layout row, and only these three
+rows collapse. Rendering is restored from the setup screen's show, layout, and
+toggle lifecycles. Price changes use short-lived scopes around Polytopia's native
 train/build UI, validation, and execution paths; the original shared data is
 restored immediately and bots keep their normal prices. No per-frame scan is
 added.
 
-Alpha 0.6.3 deliberately does not patch or mutate the home screen. The attempted
+Alpha 0.6.4 deliberately does not patch or mutate the home screen. The attempted
 version label in Alpha 0.6.2 could still terminate the native IL2CPP process
 immediately after `StartScreen.Init()` without producing a managed exception.
 The installed version remains visible in PolyMod and `manifest.json`, and the
@@ -148,7 +150,7 @@ explicitly excluded from `BetterBoPMod.dll`. See
 
 ## Install
 
-Download the Alpha 0.6.3 release ZIP, extract it, and place the
+Download the Alpha 0.6.4 release ZIP, extract it, and place the
 `Better-BoP-Mod` folder directly inside Polytopia's `Mods` directory. These files
 must be together at that folder's top level:
 
@@ -164,7 +166,7 @@ converted into Oblivion games.
 The BepInEx log confirms a successful load with:
 
 ```text
-Better BoP Alpha 0.6.3 loaded: home-screen hooks removed, advanced handicaps retained, and accurate lobby readiness.
+Better BoP Alpha 0.6.4 loaded: stable home screen, ordered advanced settings, and working advanced collapse controls.
 ```
 
 ## Development

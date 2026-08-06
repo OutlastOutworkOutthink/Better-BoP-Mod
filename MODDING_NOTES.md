@@ -190,12 +190,15 @@ the reference assemblies, not that the patched screen executed correctly.
   Discord completion, and unchanged Elo. A compile cannot prove native IL2CPP
   session/player ownership behavior.
 
-## Advanced match handicaps (Alpha 0.6.3)
+## Advanced match handicaps (Alpha 0.6.4)
 
 - Reuse `GameSetupScreen_UI2.advancedSettingsExpanded`, the stock horizontal
-  list prefab, and `GameSetupScreenView.allComponents/allLists`. Reassert the
-  rows from `OnShow`, both sides of `RunLayout`, and the advanced-toggle click;
-  setup screens rebuild and reset child visibility at more than one boundary.
+  list prefab, and `GameSetupScreenView.allComponents/allLists`. Normalize the
+  order to Map Type, Map Size, advanced toggle, then the three custom
+  list/description pairs. Reassert it from `OnShow`, both sides of `RunLayout`,
+  and the advanced-toggle click; setup screens rebuild and reset child
+  visibility at more than one boundary. Call public `UpdateLayout()` after the
+  initial clone pass and after a toggle, never from inside the layout patch.
 - Snapshot the three selected percentages when the host creates the game.
   Persist by game ID and embed a compact validated marker in `GameName` so a
   modded peer reads the same deterministic rules. Only strip a marker after all
@@ -236,5 +239,6 @@ the reference assemblies, not that the patched screen executed correctly.
 
 - Keep all releases on **Alpha 0.6.X** until the project owner explicitly asks
   to move to **Alpha 0.7**. Increment only the patch component after 0.6.0.
-- Every release must update `manifest.json`, `Main.cs`, `README.md`, the release
-  ZIP/tag, and `HomeVersionLabel.DisplayText` to the exact same version.
+- Every release must update `manifest.json`, `Main.cs`, `README.md`, and the
+  release ZIP/tag to the exact same version. Do not restore a home-screen
+  version label until a native-safe hook has been proven on the shipped build.
