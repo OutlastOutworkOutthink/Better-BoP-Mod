@@ -4,7 +4,7 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.6.3 keeps the locked gameplay baselines and removes all hooks from
+/// Alpha 0.6.4 keeps the locked gameplay baselines and removes all hooks from
 /// Polytopia's native home-screen lifecycle after Alpha 0.6.2 still caused a
 /// native IL2CPP crash immediately after StartScreen.Init().
 /// </summary>
@@ -117,7 +117,7 @@ public static class Main
         SafePatch(typeof(AdvancedEnemyHealthPatch), logger);
         SafePatch(typeof(AdvancedEnemySpawnHealthPatch), logger);
         SafePatch(typeof(AdvancedConvertedUnitHealthPatch), logger);
-        logger.LogMessage("Better BoP Alpha 0.6.3 loaded: home-screen hooks removed, advanced handicaps retained, and accurate lobby readiness.");
+        logger.LogMessage("Better BoP Alpha 0.6.4 loaded: stable home screen, ordered advanced settings, and working advanced collapse controls.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)

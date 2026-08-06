@@ -6,13 +6,20 @@ source_file="$root/AdvancedMatchSettings.cs"
 
 grep -Fq '"Show Advanced Settings"' "$source_file"
 grep -Fq '"Hide Advanced Settings"' "$source_file"
-grep -Fq '"Unit cost multiplayer"' "$source_file"
-grep -Fq '"Building cost multiplier"' "$source_file"
+grep -Fq '"Unit cost for you"' "$source_file"
+grep -Fq '"Your building cost"' "$source_file"
 grep -Fq '"Enemy unit health"' "$source_file"
 grep -Fq '25, 50, 100, 150, 200, 300, 500' "$source_file"
 grep -Fq 'AdvancedSettingsOnShowPatch' "$source_file"
 grep -Fq 'AdvancedSettingsLayoutPatch' "$source_file"
 grep -Fq 'AdvancedSettingsTogglePatch' "$source_file"
+grep -Fq 'KeepNativeMapRowsVisible' "$source_file"
+grep -Fq 'NormalizeComponentOrder' "$source_file"
+grep -Fq '(view.whatToShow & GameSetupScreenView.Show.MapTypeList) != 0' "$source_file"
+grep -Fq '(view.whatToShow & GameSetupScreenView.Show.MapSizeList) != 0' "$source_file"
+grep -Fq 'ControlsByView.Remove(view.Pointer);' "$source_file"
+grep -Fq 'screen.advancedSettingsExpanded == previouslyExpanded' "$source_file"
+grep -Fq 'screen.UpdateLayout();' "$source_file"
 grep -Fq 'GameType.SinglePlayer' "$source_file"
 grep -Fq 'AdvancedSettingsSingleplayerStartPatch' "$source_file"
 grep -Fq 'if (!pending) activeRules = RuleSet.Default;' "$source_file"
@@ -42,6 +49,11 @@ fi
 
 if grep -Eq 'HarmonyPatch\(typeof\((UnitData|ImprovementData)\), "get_cost"' "$source_file"; then
   echo "IL2CPP field accessors cannot be patched safely." >&2
+  exit 1
+fi
+
+if grep -Fq 'screen.view.RunLayout' "$source_file"; then
+  echo "Advanced settings must relayout through ScreenBase_UI2.UpdateLayout, not recurse into the view." >&2
   exit 1
 fi
 

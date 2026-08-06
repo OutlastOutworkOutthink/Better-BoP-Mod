@@ -118,10 +118,14 @@ internal static class AdvancedMatchSettings
 
         try
         {
-            view.SetShowAdvancedSettingsToggleButton(
-                screen.advancedSettingsExpanded ? "Hide Advanced Settings" : "Show Advanced Settings"
-            );
-            if (!ControlsByView.TryGetValue(view.Pointer, out Controls? controls) || !controls.IsAlive)
+            ControlsByView.TryGetValue(view.Pointer, out Controls? controls);
+            if (controls != null && !controls.IsAlive)
+            {
+                ControlsByView.Remove(view.Pointer);
+                controls = null;
+            }
+
+            if (controls == null)
             {
                 UIHorizontalList_UI2? listTemplate = view.listMapSize ?? view.listGameMode ?? view.listNetwork;
                 TextField_UI2? descriptionTemplate = view.mapSizeDescriptionText ?? view.gameConfigurationDescriptionText;
@@ -130,14 +134,14 @@ internal static class AdvancedMatchSettings
                     return false;
 
                 controls = new Controls(
-                    CloneList(view, listTemplate, UnitListName, "Unit cost multiplayer", UnitIndex(), SetUnitIndex),
+                    CloneList(view, listTemplate, UnitListName, "Unit cost for you", UnitIndex(), SetUnitIndex),
                     CloneDescription(
                         view,
                         descriptionTemplate,
                         UnitDescriptionName,
                         "Multiplies how much your units cost, rounded up. Only your units are affected; bots pay normal prices."
                     ),
-                    CloneList(view, listTemplate, BuildingListName, "Building cost multiplier", BuildingIndex(), SetBuildingIndex),
+                    CloneList(view, listTemplate, BuildingListName, "Your building cost", BuildingIndex(), SetBuildingIndex),
                     CloneDescription(
                         view,
                         descriptionTemplate,
@@ -153,12 +157,16 @@ internal static class AdvancedMatchSettings
                     )
                 );
                 ControlsByView[view.Pointer] = controls;
-                InsertAfterAdvancedToggle(view, controls);
                 logger.LogInfo("Added three native advanced match setting rows.");
             }
 
+            KeepNativeMapRowsVisible(view);
+            NormalizeComponentOrder(view, controls);
             RefreshControls(controls);
             SetVisible(view, screen.advancedSettingsExpanded);
+            view.SetShowAdvancedSettingsToggleButton(
+                screen.advancedSettingsExpanded ? "Hide Advanced Settings" : "Show Advanced Settings"
+            );
             return true;
         }
         catch (Exception exception)
@@ -172,6 +180,7 @@ internal static class AdvancedMatchSettings
     {
         if (screen?.view == null) return;
         bool target = IsSupportedSetup();
+        if (target) KeepNativeMapRowsVisible(screen.view);
         SetVisible(screen.view, target && screen.advancedSettingsExpanded);
         if (target)
         {
@@ -181,13 +190,22 @@ internal static class AdvancedMatchSettings
         }
     }
 
-    internal static void RefreshVisibilityAndLayout(
-        GameSetupScreen_UI2 screen,
-        ScreenBase_UI2.ScreenSize screenSize
-    )
+    internal static void RefreshVisibilityAfterLayout(GameSetupScreen_UI2 screen)
     {
         RefreshVisibility(screen);
-        if (screen?.view != null && IsSupportedSetup()) screen.view.RunLayout(screenSize);
+    }
+
+    internal static void RefreshAfterToggle(GameSetupScreen_UI2 screen, bool previouslyExpanded)
+    {
+        if (screen == null || !IsSupportedSetup()) return;
+
+        // The native handler normally flips this field. Some setup variants do
+        // not, so guarantee exactly one state change without double-toggling.
+        if (screen.advancedSettingsExpanded == previouslyExpanded)
+            screen.advancedSettingsExpanded = !previouslyExpanded;
+
+        if (!EnsureControls(screen)) return;
+        screen.UpdateLayout();
     }
 
     internal static UnitCostScope BeginUnitCostScope(GameState? state, UnitData.Type? only = null)
@@ -311,19 +329,79 @@ internal static class AdvancedMatchSettings
         return description;
     }
 
-    private static void InsertAfterAdvancedToggle(GameSetupScreenView view, Controls controls)
+    private static void KeepNativeMapRowsVisible(GameSetupScreenView view)
     {
-        int insertAt = view.allComponents.Count;
-        IntPtr togglePointer = view.advancedSettingsToggle?.Pointer ?? IntPtr.Zero;
-        for (int index = 0; index < view.allComponents.Count; index++)
+        // Map controls remain outside Better BoP's advanced section, but only
+        // when vanilla included them for this particular setup variant.
+        if ((view.whatToShow & GameSetupScreenView.Show.MapTypeList) != 0 && view.listMapType != null)
+            view.listMapType.ActiveSelf = true;
+        if ((view.whatToShow & GameSetupScreenView.Show.MapSizeList) != 0 && view.listMapSize != null)
+            view.listMapSize.ActiveSelf = true;
+    }
+
+    private static void NormalizeComponentOrder(GameSetupScreenView view, Controls controls)
+    {
+        if (view.allComponents == null || view.advancedSettingsToggle == null) return;
+
+        List<UIBasicComponent> ordered = controls.Components.ToList();
+        int toggleIndex = FindComponentIndex(view, view.advancedSettingsToggle);
+        int mapTypeIndex = FindComponentIndex(view, view.listMapType);
+        int mapSizeIndex = FindComponentIndex(view, view.listMapSize);
+        bool alreadyOrdered = toggleIndex > Math.Max(mapTypeIndex, mapSizeIndex);
+        for (int offset = 0; alreadyOrdered && offset < ordered.Count; offset++)
+            alreadyOrdered = FindComponentIndex(view, ordered[offset]) == toggleIndex + offset + 1;
+        if (alreadyOrdered) return;
+
+        IUILayoutable? toggleLayout = null;
+        for (int index = view.allComponents.Count - 1; index >= 0; index--)
         {
-            if (view.allComponents[index]?.Pointer != togglePointer) continue;
-            insertAt = index + 1;
-            break;
+            IUILayoutable? entry = view.allComponents[index];
+            if (Matches(entry, view.advancedSettingsToggle))
+            {
+                toggleLayout ??= entry;
+                view.allComponents.RemoveAt(index);
+                continue;
+            }
+
+            if (!ordered.Any(component => Matches(entry, component))) continue;
+            view.allComponents.RemoveAt(index);
         }
 
-        foreach (UIBasicComponent component in controls.Components)
-            view.allComponents.Insert(insertAt++, new IUILayoutable(component.Pointer));
+        int anchor = Math.Max(
+            FindComponentIndex(view, view.listMapType),
+            Math.Max(
+                FindComponentIndex(view, view.listMapSize),
+                FindComponentIndex(view, view.mapSizeDescriptionText)
+            )
+        );
+        int insertAt = Math.Clamp(anchor + 1, 0, view.allComponents.Count);
+        view.allComponents.Insert(insertAt++, toggleLayout ?? AsLayoutable(view.advancedSettingsToggle));
+        foreach (UIBasicComponent component in ordered)
+            view.allComponents.Insert(insertAt++, AsLayoutable(component));
+    }
+
+    private static int FindComponentIndex(GameSetupScreenView view, UIBasicComponent? component)
+    {
+        if (component == null || view.allComponents == null) return -1;
+        for (int index = 0; index < view.allComponents.Count; index++)
+        {
+            if (Matches(view.allComponents[index], component)) return index;
+        }
+        return -1;
+    }
+
+    private static bool Matches(IUILayoutable? layout, UIBasicComponent component)
+    {
+        if (layout == null || component == null) return false;
+        if (layout.Pointer == component.Pointer) return true;
+        try { return layout.TryCast<UIBasicComponent>()?.Pointer == component.Pointer; }
+        catch { return false; }
+    }
+
+    private static IUILayoutable AsLayoutable(UIBasicComponent component)
+    {
+        try { return component.TryCast<IUILayoutable>() ?? new IUILayoutable(component.Pointer); }
+        catch { return new IUILayoutable(component.Pointer); }
     }
 
     private static void SetVisible(GameSetupScreenView view, bool visible)
@@ -338,9 +416,9 @@ internal static class AdvancedMatchSettings
         int building = BuildingIndex();
         int health = EnemyHealthIndex();
         if (controls.UnitCost.SelectedIndex != unit)
-            controls.UnitCost.SetData("Unit cost multiplayer", PercentageLabels(), unit);
+            controls.UnitCost.SetData("Unit cost for you", PercentageLabels(), unit);
         if (controls.BuildingCost.SelectedIndex != building)
-            controls.BuildingCost.SetData("Building cost multiplier", PercentageLabels(), building);
+            controls.BuildingCost.SetData("Your building cost", PercentageLabels(), building);
         if (controls.EnemyHealth.SelectedIndex != health)
             controls.EnemyHealth.SetData("Enemy unit health", PercentageLabels(), health);
     }
@@ -596,7 +674,21 @@ internal static class AdvancedMatchSettings
             HealthDescription = healthDescription;
         }
 
-        internal bool IsAlive => UnitCost != null && UnitCost.gameObject != null;
+        internal bool IsAlive
+        {
+            get
+            {
+                try
+                {
+                    return UnitCost != null && UnitCost.Pointer != IntPtr.Zero &&
+                        UnitCost.gameObject != null && UnitCost.gameObject.Pointer != IntPtr.Zero;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
         internal IEnumerable<UIBasicComponent> Components
         {
             get
@@ -633,7 +725,10 @@ internal static class AdvancedMatchSettings
 internal static class AdvancedSettingsOnShowPatch
 {
     [HarmonyPostfix]
-    private static void AddRows(GameSetupScreen_UI2 __instance) => AdvancedMatchSettings.EnsureControls(__instance);
+    private static void AddRows(GameSetupScreen_UI2 __instance)
+    {
+        if (AdvancedMatchSettings.EnsureControls(__instance)) __instance.UpdateLayout();
+    }
 }
 
 [HarmonyPatch(typeof(GameSetupScreen_UI2), "RunLayout")]
@@ -643,17 +738,20 @@ internal static class AdvancedSettingsLayoutPatch
     private static void AddRowsBeforeLayout(GameSetupScreen_UI2 __instance) => AdvancedMatchSettings.EnsureControls(__instance);
 
     [HarmonyPostfix]
-    private static void RestoreRowsAfterLayout(
-        GameSetupScreen_UI2 __instance,
-        ScreenBase_UI2.ScreenSize screenSize
-    ) => AdvancedMatchSettings.RefreshVisibilityAndLayout(__instance, screenSize);
+    private static void RestoreRowsAfterLayout(GameSetupScreen_UI2 __instance) =>
+        AdvancedMatchSettings.RefreshVisibilityAfterLayout(__instance);
 }
 
 [HarmonyPatch(typeof(GameSetupScreen_UI2), "OnAdvancedSettingsToggleClicked")]
 internal static class AdvancedSettingsTogglePatch
 {
+    [HarmonyPrefix]
+    private static void CaptureState(GameSetupScreen_UI2 __instance, out bool __state) =>
+        __state = __instance.advancedSettingsExpanded;
+
     [HarmonyPostfix]
-    private static void RefreshRows(GameSetupScreen_UI2 __instance) => AdvancedMatchSettings.EnsureControls(__instance);
+    private static void RefreshRows(GameSetupScreen_UI2 __instance, bool __state) =>
+        AdvancedMatchSettings.RefreshAfterToggle(__instance, __state);
 }
 
 [HarmonyPatch(typeof(GameSetupScreen_UI2), "OnContinueClicked_StartMultiplayerGame")]
