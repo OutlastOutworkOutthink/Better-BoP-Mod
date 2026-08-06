@@ -190,21 +190,25 @@ the reference assemblies, not that the patched screen executed correctly.
   Discord completion, and unchanged Elo. A compile cannot prove native IL2CPP
   session/player ownership behavior.
 
-## Advanced match handicaps (Alpha 0.6.5)
+## Advanced match handicaps (Alpha 0.6.6)
 
-- Reuse `GameSetupScreen_UI2.advancedSettingsExpanded`, but create each custom
-  row with `UILibrary.NewHorizontalList`/`NewText`. Never clone the live Map Size
+- Reuse `GameSetupScreen_UI2.advancedSettingsExpanded`, but create a dedicated
+  label toggle with `UILibrary.NewLabelButton` and each custom row with
+  `UILibrary.NewHorizontalList`/`NewText`. Never clone the live Map Size
   list: its populated Tiny/Small/etc. children and coordinates survive cloning
   and overlap percentage labels. Key controls by the setup holder, recover them
   by exact names, and discard incomplete or duplicated named sets so game-mode
   rebuilds remain idempotent.
-- Normalize `GameSetupScreenView.allComponents` to Map Type, Map Size, advanced
-  toggle, then the three list/description pairs. Reassert visibility, the toggle
-  label, and that order in a prefix on `GameSetupScreenView.RunLayout`; doing it
-  in a screen-layout postfix is too late because the controls retain stale row
-  coordinates. Let Polytopia's native view layout position them, and call public
-  `UpdateLayout()` only after initial creation or a user toggle—never recursively
-  from inside the view-layout hook.
+- Polytopia hard-codes its stock Advanced Settings toggle before Map Type and
+  Map Size, and some Creative setup variants never wire that stock button's
+  signal chain. Hide the stock toggle and own one retained click delegate. Keep
+  Map Type and Map Size native, insert the custom toggle plus its three
+  list/description pairs immediately before Continue, and reassert component
+  and sibling order in the `GameSetupScreenView.RunLayout` prefix. That native
+  method does not vertically position unknown controls, so a last-priority
+  postfix anchors the custom block below Map Size and moves Continue below the
+  active block. Call public `UpdateLayout()` only after initial creation or a
+  user toggle—never recursively from inside the view-layout hook.
 - Snapshot the three selected percentages when the host creates the game.
   Persist by game ID and embed a compact validated marker in `GameName` so a
   modded peer reads the same deterministic rules. Only strip a marker after all
