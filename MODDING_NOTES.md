@@ -190,15 +190,21 @@ the reference assemblies, not that the patched screen executed correctly.
   Discord completion, and unchanged Elo. A compile cannot prove native IL2CPP
   session/player ownership behavior.
 
-## Advanced match handicaps (Alpha 0.6.4)
+## Advanced match handicaps (Alpha 0.6.5)
 
-- Reuse `GameSetupScreen_UI2.advancedSettingsExpanded`, the stock horizontal
-  list prefab, and `GameSetupScreenView.allComponents/allLists`. Normalize the
-  order to Map Type, Map Size, advanced toggle, then the three custom
-  list/description pairs. Reassert it from `OnShow`, both sides of `RunLayout`,
-  and the advanced-toggle click; setup screens rebuild and reset child
-  visibility at more than one boundary. Call public `UpdateLayout()` after the
-  initial clone pass and after a toggle, never from inside the layout patch.
+- Reuse `GameSetupScreen_UI2.advancedSettingsExpanded`, but create each custom
+  row with `UILibrary.NewHorizontalList`/`NewText`. Never clone the live Map Size
+  list: its populated Tiny/Small/etc. children and coordinates survive cloning
+  and overlap percentage labels. Key controls by the setup holder, recover them
+  by exact names, and discard incomplete or duplicated named sets so game-mode
+  rebuilds remain idempotent.
+- Normalize `GameSetupScreenView.allComponents` to Map Type, Map Size, advanced
+  toggle, then the three list/description pairs. Reassert visibility, the toggle
+  label, and that order in a prefix on `GameSetupScreenView.RunLayout`; doing it
+  in a screen-layout postfix is too late because the controls retain stale row
+  coordinates. Let Polytopia's native view layout position them, and call public
+  `UpdateLayout()` only after initial creation or a user toggle—never recursively
+  from inside the view-layout hook.
 - Snapshot the three selected percentages when the host creates the game.
   Persist by game ID and embed a compact validated marker in `GameName` so a
   modded peer reads the same deterministic rules. Only strip a marker after all
@@ -218,7 +224,7 @@ the reference assemblies, not that the patched screen executed correctly.
   across `ConvertAction.Execute`, then adopt the maximum appropriate to its new
   owner. Otherwise converted enemies can retain health above the friendly cap.
 - A clean build does not prove that a backend preserves invisible game-name
-  code points or that cloned UI rows survive every shipped prefab revision.
+  code points or that native-created UI rows survive every shipped prefab revision.
   Before publishing, test host and guest values, reopen persistence, all seven
   percentages, bot costs, roads/special improvements, spawning, conversion,
   healing, and narrow/wide setup layouts on the Windows game build.

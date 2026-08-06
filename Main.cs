@@ -4,7 +4,7 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.6.4 keeps the locked gameplay baselines and removes all hooks from
+/// Alpha 0.6.5 keeps the locked gameplay baselines and removes all hooks from
 /// Polytopia's native home-screen lifecycle after Alpha 0.6.2 still caused a
 /// native IL2CPP crash immediately after StartScreen.Init().
 /// </summary>
@@ -101,6 +101,7 @@ public static class Main
 
         SafePatch(typeof(AdvancedSettingsOnShowPatch), logger);
         SafePatch(typeof(AdvancedSettingsLayoutPatch), logger);
+        SafePatch(typeof(AdvancedSettingsViewLayoutPatch), logger);
         SafePatch(typeof(AdvancedSettingsTogglePatch), logger);
         SafePatch(typeof(AdvancedSettingsSingleplayerStartPatch), logger);
         SafePatch(typeof(AdvancedSettingsMultiplayerStartPatch), logger);
@@ -117,7 +118,7 @@ public static class Main
         SafePatch(typeof(AdvancedEnemyHealthPatch), logger);
         SafePatch(typeof(AdvancedEnemySpawnHealthPatch), logger);
         SafePatch(typeof(AdvancedConvertedUnitHealthPatch), logger);
-        logger.LogMessage("Better BoP Alpha 0.6.4 loaded: stable home screen, ordered advanced settings, and working advanced collapse controls.");
+        logger.LogMessage("Better BoP Alpha 0.6.5 loaded: stable home screen and idempotent native advanced-setting rows.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)

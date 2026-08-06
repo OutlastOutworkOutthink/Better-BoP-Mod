@@ -31,7 +31,7 @@ internal static class AdvancedMatchSettings
 
     private static readonly int[] Percentages = { 25, 50, 100, 150, 200, 300, 500 };
     private static readonly string[] Labels = { "25%", "50%", "100%", "150%", "200%", "300%", "500%" };
-    private static readonly Dictionary<IntPtr, Controls> ControlsByView = new();
+    private static readonly Dictionary<IntPtr, Controls> ControlsByHolder = new();
     private static ManualLogSource logger = null!;
     private static RuleSet pendingRules = RuleSet.Default;
     private static RuleSet activeRules = RuleSet.Default;
@@ -39,6 +39,7 @@ internal static class AdvancedMatchSettings
     private static bool hasActiveRulesOwner;
     [ThreadStatic] private static int unitCostScopeDepth;
     [ThreadStatic] private static int buildingCostScopeDepth;
+    private static int discardedControlSerial;
     private static DateTime pendingSinceUtc;
     private static bool pending;
 
@@ -112,58 +113,43 @@ internal static class AdvancedMatchSettings
 
         if (!IsSupportedSetup())
         {
-            SetVisible(view, false);
+            Controls? existing = ControlsFor(view);
+            if (existing != null) SetVisible(existing, false);
             return false;
         }
 
+        if (view.holder == null) return false;
+
         try
         {
-            ControlsByView.TryGetValue(view.Pointer, out Controls? controls);
-            if (controls != null && !controls.IsAlive)
+            IntPtr holderKey = view.holder.Pointer;
+            PruneOtherControlHolders(holderKey);
+            ControlsByHolder.TryGetValue(holderKey, out Controls? controls);
+            if (controls != null && (!controls.IsAlive || !controls.IsUnder(view.holder)))
             {
-                ControlsByView.Remove(view.Pointer);
+                ControlsByHolder.Remove(holderKey);
                 controls = null;
             }
 
             if (controls == null)
             {
-                UIHorizontalList_UI2? listTemplate = view.listMapSize ?? view.listGameMode ?? view.listNetwork;
-                TextField_UI2? descriptionTemplate = view.mapSizeDescriptionText ?? view.gameConfigurationDescriptionText;
-                if (listTemplate == null || descriptionTemplate == null || view.holder == null ||
-                    view.allComponents == null || view.allLists == null)
-                    return false;
-
-                controls = new Controls(
-                    CloneList(view, listTemplate, UnitListName, "Unit cost for you", UnitIndex(), SetUnitIndex),
-                    CloneDescription(
-                        view,
-                        descriptionTemplate,
-                        UnitDescriptionName,
-                        "Multiplies how much your units cost, rounded up. Only your units are affected; bots pay normal prices."
-                    ),
-                    CloneList(view, listTemplate, BuildingListName, "Your building cost", BuildingIndex(), SetBuildingIndex),
-                    CloneDescription(
-                        view,
-                        descriptionTemplate,
-                        BuildingDescriptionName,
-                        "Multiplies every tile-interaction cost, rounded up, including roads and special-tribe buildings."
-                    ),
-                    CloneList(view, listTemplate, HealthListName, "Enemy unit health", EnemyHealthIndex(), SetEnemyHealthIndex),
-                    CloneDescription(
-                        view,
-                        descriptionTemplate,
-                        HealthDescriptionName,
-                        "Changes the maximum health of every opposing unit by this percentage."
-                    )
-                );
-                ControlsByView[view.Pointer] = controls;
-                logger.LogInfo("Added three native advanced match setting rows.");
+                controls = FindExistingControls(view.holder);
+                if (controls == null)
+                {
+                    DiscardPartialOrDuplicateControls(view);
+                    controls = CreateControls(view.holder);
+                    logger.LogInfo("Created one clean set of three advanced match setting rows.");
+                }
+                ControlsByHolder[holderKey] = controls;
             }
 
-            KeepNativeMapRowsVisible(view);
+            controls.Expanded = screen.advancedSettingsExpanded;
+            controls.ShowMapType = HasListData(screen.mapTypeData);
+            controls.ShowMapSize = HasListData(screen.mapSizeData);
+            ApplyNativeSetupRows(view, controls);
             NormalizeComponentOrder(view, controls);
             RefreshControls(controls);
-            SetVisible(view, screen.advancedSettingsExpanded);
+            SetVisible(controls, controls.Expanded);
             view.SetShowAdvancedSettingsToggleButton(
                 screen.advancedSettingsExpanded ? "Hide Advanced Settings" : "Show Advanced Settings"
             );
@@ -171,28 +157,26 @@ internal static class AdvancedMatchSettings
         }
         catch (Exception exception)
         {
+            try
+            {
+                if (view.holder != null) ControlsByHolder.Remove(view.holder.Pointer);
+            }
+            catch { }
             logger.LogWarning($"Could not render advanced match settings yet: {exception.Message}");
             return false;
         }
     }
 
-    internal static void RefreshVisibility(GameSetupScreen_UI2 screen)
+    internal static void PrepareViewLayout(GameSetupScreenView view)
     {
-        if (screen?.view == null) return;
-        bool target = IsSupportedSetup();
-        if (target) KeepNativeMapRowsVisible(screen.view);
-        SetVisible(screen.view, target && screen.advancedSettingsExpanded);
-        if (target)
-        {
-            screen.view.SetShowAdvancedSettingsToggleButton(
-                screen.advancedSettingsExpanded ? "Hide Advanced Settings" : "Show Advanced Settings"
-            );
-        }
-    }
-
-    internal static void RefreshVisibilityAfterLayout(GameSetupScreen_UI2 screen)
-    {
-        RefreshVisibility(screen);
+        Controls? controls = ControlsFor(view);
+        if (controls == null || !IsSupportedSetup()) return;
+        ApplyNativeSetupRows(view, controls);
+        NormalizeComponentOrder(view, controls);
+        SetVisible(controls, controls.Expanded);
+        view.SetShowAdvancedSettingsToggleButton(
+            controls.Expanded ? "Hide Advanced Settings" : "Show Advanced Settings"
+        );
     }
 
     internal static void RefreshAfterToggle(GameSetupScreen_UI2 screen, bool previouslyExpanded)
@@ -292,79 +276,221 @@ internal static class AdvancedMatchSettings
         unit.health = (ushort)Math.Clamp(maxHealth, 1, ushort.MaxValue);
     }
 
-    private static UIHorizontalList_UI2 CloneList(
-        GameSetupScreenView view,
-        UIHorizontalList_UI2 template,
+    private static UIHorizontalList_UI2 CreateList(
+        RectTransform holder,
         string name,
         string header,
         int selectedIndex,
         Action<int> onSelected
     )
     {
-        GameObject clone = UnityEngine.Object.Instantiate(template.gameObject, view.holder);
-        clone.name = name;
-        UIHorizontalList_UI2 list = clone.GetComponent<UIHorizontalList_UI2>();
+        UIHorizontalList_UI2 list = UILibrary.NewHorizontalList(holder);
+        list.gameObject.name = name;
+        if (!list.Initialized) list.Init();
         SignalPayload<int> signal = new();
         signal.Add(DelegateSupport.ConvertDelegate<Il2CppSystem.Action<int>>(onSelected));
         list.onItemSelected = signal;
         list.onItemHighlighted = new SignalPayload<int>();
         list.onDisabledItemClicked = new Signal();
         list.SetData(header, PercentageLabels(), selectedIndex);
-        view.allLists.Add(list);
+        list.UpdateLayout();
         return list;
     }
 
-    private static TextField_UI2 CloneDescription(
-        GameSetupScreenView view,
-        TextField_UI2 template,
+    private static TextField_UI2 CreateDescription(
+        RectTransform holder,
         string name,
         string text
     )
     {
-        GameObject clone = UnityEngine.Object.Instantiate(template.gameObject, view.holder);
-        clone.name = name;
-        TextField_UI2 description = clone.GetComponent<TextField_UI2>();
+        TextField_UI2 description = UILibrary.NewText(holder, text);
+        description.gameObject.name = name;
         description.SetText(text);
         description.UpdateSize();
         return description;
     }
 
-    private static void KeepNativeMapRowsVisible(GameSetupScreenView view)
+    private static Controls CreateControls(RectTransform holder) => new(
+        CreateList(holder, UnitListName, "Unit cost for you", UnitIndex(), SetUnitIndex),
+        CreateDescription(
+            holder,
+            UnitDescriptionName,
+            "Multiplies how much your units cost, rounded up. Only your units are affected; bots pay normal prices."
+        ),
+        CreateList(holder, BuildingListName, "Your building cost", BuildingIndex(), SetBuildingIndex),
+        CreateDescription(
+            holder,
+            BuildingDescriptionName,
+            "Multiplies every tile-interaction cost, rounded up, including roads and special-tribe buildings."
+        ),
+        CreateList(holder, HealthListName, "Enemy unit health", EnemyHealthIndex(), SetEnemyHealthIndex),
+        CreateDescription(
+            holder,
+            HealthDescriptionName,
+            "Changes the maximum health of every opposing unit by this percentage."
+        )
+    );
+
+    private static void ApplyNativeSetupRows(GameSetupScreenView view, Controls controls)
     {
-        // Map controls remain outside Better BoP's advanced section, but only
-        // when vanilla included them for this particular setup variant.
-        if ((view.whatToShow & GameSetupScreenView.Show.MapTypeList) != 0 && view.listMapType != null)
-            view.listMapType.ActiveSelf = true;
-        if ((view.whatToShow & GameSetupScreenView.Show.MapSizeList) != 0 && view.listMapSize != null)
-            view.listMapSize.ActiveSelf = true;
+        // The toggle belongs to Better BoP's rows. Native map rows stay outside
+        // it and are restored only when vanilla supplied data for this setup.
+        view.whatToShow |= GameSetupScreenView.Show.AdvancedSettingsToggle;
+        if (view.advancedSettingsToggle != null) view.advancedSettingsToggle.ActiveSelf = true;
+
+        if (controls.ShowMapType)
+            view.whatToShow |= GameSetupScreenView.Show.MapTypeList;
+        else
+            view.whatToShow &= ~GameSetupScreenView.Show.MapTypeList;
+        if (view.listMapType != null) view.listMapType.ActiveSelf = controls.ShowMapType;
+
+        if (controls.ShowMapSize)
+            view.whatToShow |= GameSetupScreenView.Show.MapSizeList;
+        else
+            view.whatToShow &= ~GameSetupScreenView.Show.MapSizeList;
+        if (view.listMapSize != null) view.listMapSize.ActiveSelf = controls.ShowMapSize;
+    }
+
+    private static bool HasListData(UIHorizontalListData? data) =>
+        data?.labels != null && data.labels.Count > 0;
+
+    private static Controls? ControlsFor(GameSetupScreenView? view)
+    {
+        if (view?.holder == null) return null;
+        IntPtr key = view.holder.Pointer;
+        if (!ControlsByHolder.TryGetValue(key, out Controls? controls)) return null;
+        if (controls.IsAlive && controls.IsUnder(view.holder)) return controls;
+        ControlsByHolder.Remove(key);
+        return null;
+    }
+
+    private static void PruneOtherControlHolders(IntPtr currentHolder)
+    {
+        foreach ((IntPtr holder, Controls controls) in ControlsByHolder.ToArray())
+        {
+            if (holder == currentHolder) continue;
+            try { SetVisible(controls, false); }
+            catch { }
+            ControlsByHolder.Remove(holder);
+        }
+    }
+
+    private static Controls? FindExistingControls(RectTransform holder)
+    {
+        UIHorizontalList_UI2? unit = FindOnlyList(holder, UnitListName, out int unitCount);
+        UIHorizontalList_UI2? building = FindOnlyList(holder, BuildingListName, out int buildingCount);
+        UIHorizontalList_UI2? health = FindOnlyList(holder, HealthListName, out int healthCount);
+        TextField_UI2? unitDescription = FindOnlyText(holder, UnitDescriptionName, out int unitDescriptionCount);
+        TextField_UI2? buildingDescription = FindOnlyText(holder, BuildingDescriptionName, out int buildingDescriptionCount);
+        TextField_UI2? healthDescription = FindOnlyText(holder, HealthDescriptionName, out int healthDescriptionCount);
+
+        int total = unitCount + buildingCount + healthCount + unitDescriptionCount +
+            buildingDescriptionCount + healthDescriptionCount;
+        if (total == 0) return null;
+        if (unitCount == 1 && buildingCount == 1 && healthCount == 1 &&
+            unitDescriptionCount == 1 && buildingDescriptionCount == 1 && healthDescriptionCount == 1)
+        {
+            logger.LogInfo("Recovered the existing advanced setting rows after a setup-view refresh.");
+            return new Controls(unit!, unitDescription!, building!, buildingDescription!, health!, healthDescription!);
+        }
+
+        logger.LogWarning($"Found an incomplete or duplicated advanced UI set ({total} named controls); rebuilding it once.");
+        return null;
+    }
+
+    private static UIHorizontalList_UI2? FindOnlyList(RectTransform holder, string name, out int count)
+    {
+        UIHorizontalList_UI2? result = null;
+        count = 0;
+        foreach (UIHorizontalList_UI2 candidate in holder.GetComponentsInChildren<UIHorizontalList_UI2>(true))
+        {
+            if (candidate?.gameObject == null || candidate.gameObject.name != name) continue;
+            result = candidate;
+            count++;
+        }
+        return count == 1 ? result : null;
+    }
+
+    private static TextField_UI2? FindOnlyText(RectTransform holder, string name, out int count)
+    {
+        TextField_UI2? result = null;
+        count = 0;
+        foreach (TextField_UI2 candidate in holder.GetComponentsInChildren<TextField_UI2>(true))
+        {
+            if (candidate?.gameObject == null || candidate.gameObject.name != name) continue;
+            result = candidate;
+            count++;
+        }
+        return count == 1 ? result : null;
+    }
+
+    private static bool IsCustomName(string? name) => name is
+        UnitListName or UnitDescriptionName or BuildingListName or BuildingDescriptionName or
+        HealthListName or HealthDescriptionName;
+
+    private static void DiscardPartialOrDuplicateControls(GameSetupScreenView view)
+    {
+        List<UIBasicComponent> discarded = new();
+        foreach (UIHorizontalList_UI2 candidate in view.holder.GetComponentsInChildren<UIHorizontalList_UI2>(true))
+            if (candidate?.gameObject != null && IsCustomName(candidate.gameObject.name)) discarded.Add(candidate);
+        foreach (TextField_UI2 candidate in view.holder.GetComponentsInChildren<TextField_UI2>(true))
+            if (candidate?.gameObject != null && IsCustomName(candidate.gameObject.name)) discarded.Add(candidate);
+        if (discarded.Count == 0) return;
+
+        HashSet<IntPtr> layoutPointers = discarded
+            .Select(AsLayoutable)
+            .Where(layout => layout != null)
+            .Select(layout => layout!.Pointer)
+            .ToHashSet();
+        if (view.allComponents != null)
+        {
+            for (int index = view.allComponents.Count - 1; index >= 0; index--)
+                if (view.allComponents[index] != null && layoutPointers.Contains(view.allComponents[index].Pointer))
+                    view.allComponents.RemoveAt(index);
+        }
+
+        HashSet<IntPtr> listPointers = discarded.OfType<UIHorizontalList_UI2>().Select(list => list.Pointer).ToHashSet();
+        if (view.allLists != null)
+        {
+            for (int index = view.allLists.Count - 1; index >= 0; index--)
+                if (view.allLists[index] != null && listPointers.Contains(view.allLists[index].Pointer))
+                    view.allLists.RemoveAt(index);
+        }
+
+        HashSet<IntPtr> destroyedObjects = new();
+        foreach (UIBasicComponent component in discarded)
+        {
+            try
+            {
+                GameObject gameObject = component.gameObject;
+                if (gameObject == null || !destroyedObjects.Add(gameObject.Pointer)) continue;
+                component.ActiveSelf = false;
+                gameObject.name = $"BetterBoP.Discarded.{++discardedControlSerial}";
+                gameObject.SetActive(false);
+                UnityEngine.Object.Destroy(gameObject);
+            }
+            catch { }
+        }
     }
 
     private static void NormalizeComponentOrder(GameSetupScreenView view, Controls controls)
     {
         if (view.allComponents == null || view.advancedSettingsToggle == null) return;
 
-        List<UIBasicComponent> ordered = controls.Components.ToList();
-        int toggleIndex = FindComponentIndex(view, view.advancedSettingsToggle);
-        int mapTypeIndex = FindComponentIndex(view, view.listMapType);
-        int mapSizeIndex = FindComponentIndex(view, view.listMapSize);
-        bool alreadyOrdered = toggleIndex > Math.Max(mapTypeIndex, mapSizeIndex);
-        for (int offset = 0; alreadyOrdered && offset < ordered.Count; offset++)
-            alreadyOrdered = FindComponentIndex(view, ordered[offset]) == toggleIndex + offset + 1;
-        if (alreadyOrdered) return;
+        IUILayoutable? toggleLayout = AsLayoutable(view.advancedSettingsToggle);
+        List<IUILayoutable> ordered = controls.Components
+            .Select(AsLayoutable)
+            .Where(layout => layout != null)
+            .Select(layout => layout!)
+            .ToList();
+        if (toggleLayout == null || ordered.Count != 6) return;
 
-        IUILayoutable? toggleLayout = null;
+        HashSet<IntPtr> managedPointers = ordered.Select(layout => layout.Pointer).ToHashSet();
+        managedPointers.Add(toggleLayout.Pointer);
         for (int index = view.allComponents.Count - 1; index >= 0; index--)
         {
             IUILayoutable? entry = view.allComponents[index];
-            if (Matches(entry, view.advancedSettingsToggle))
-            {
-                toggleLayout ??= entry;
-                view.allComponents.RemoveAt(index);
-                continue;
-            }
-
-            if (!ordered.Any(component => Matches(entry, component))) continue;
-            view.allComponents.RemoveAt(index);
+            if (entry != null && managedPointers.Contains(entry.Pointer)) view.allComponents.RemoveAt(index);
         }
 
         int anchor = Math.Max(
@@ -375,9 +501,22 @@ internal static class AdvancedMatchSettings
             )
         );
         int insertAt = Math.Clamp(anchor + 1, 0, view.allComponents.Count);
-        view.allComponents.Insert(insertAt++, toggleLayout ?? AsLayoutable(view.advancedSettingsToggle));
-        foreach (UIBasicComponent component in ordered)
-            view.allComponents.Insert(insertAt++, AsLayoutable(component));
+        view.allComponents.Insert(insertAt++, toggleLayout);
+        foreach (IUILayoutable component in ordered) view.allComponents.Insert(insertAt++, component);
+
+        NormalizeAllLists(view, controls);
+    }
+
+    private static void NormalizeAllLists(GameSetupScreenView view, Controls controls)
+    {
+        if (view.allLists == null) return;
+        HashSet<IntPtr> pointers = controls.Lists.Select(list => list.Pointer).ToHashSet();
+        for (int index = view.allLists.Count - 1; index >= 0; index--)
+        {
+            UIHorizontalList_UI2? list = view.allLists[index];
+            if (list != null && pointers.Contains(list.Pointer)) view.allLists.RemoveAt(index);
+        }
+        foreach (UIHorizontalList_UI2 list in controls.Lists) view.allLists.Add(list);
     }
 
     private static int FindComponentIndex(GameSetupScreenView view, UIBasicComponent? component)
@@ -393,20 +532,19 @@ internal static class AdvancedMatchSettings
     private static bool Matches(IUILayoutable? layout, UIBasicComponent component)
     {
         if (layout == null || component == null) return false;
-        if (layout.Pointer == component.Pointer) return true;
-        try { return layout.TryCast<UIBasicComponent>()?.Pointer == component.Pointer; }
-        catch { return false; }
+        IUILayoutable? componentLayout = AsLayoutable(component);
+        return componentLayout != null && layout.Pointer == componentLayout.Pointer;
     }
 
-    private static IUILayoutable AsLayoutable(UIBasicComponent component)
+    private static IUILayoutable? AsLayoutable(UIBasicComponent? component)
     {
-        try { return component.TryCast<IUILayoutable>() ?? new IUILayoutable(component.Pointer); }
-        catch { return new IUILayoutable(component.Pointer); }
+        if (component == null) return null;
+        try { return component.TryCast<IUILayoutable>(); }
+        catch { return null; }
     }
 
-    private static void SetVisible(GameSetupScreenView view, bool visible)
+    private static void SetVisible(Controls controls, bool visible)
     {
-        if (!ControlsByView.TryGetValue(view.Pointer, out Controls? controls) || !controls.IsAlive) return;
         foreach (UIBasicComponent component in controls.Components) component.ActiveSelf = visible;
     }
 
@@ -656,6 +794,9 @@ internal static class AdvancedMatchSettings
         internal readonly TextField_UI2 BuildingDescription;
         internal readonly UIHorizontalList_UI2 EnemyHealth;
         internal readonly TextField_UI2 HealthDescription;
+        internal bool Expanded;
+        internal bool ShowMapType;
+        internal bool ShowMapSize;
 
         internal Controls(
             UIHorizontalList_UI2 unitCost,
@@ -680,13 +821,36 @@ internal static class AdvancedMatchSettings
             {
                 try
                 {
-                    return UnitCost != null && UnitCost.Pointer != IntPtr.Zero &&
-                        UnitCost.gameObject != null && UnitCost.gameObject.Pointer != IntPtr.Zero;
+                    return Components.All(component =>
+                        component != null && component.Pointer != IntPtr.Zero &&
+                        component.gameObject != null && component.gameObject.Pointer != IntPtr.Zero);
                 }
                 catch
                 {
                     return false;
                 }
+            }
+        }
+        internal bool IsUnder(RectTransform holder)
+        {
+            try
+            {
+                return holder != null && Components.All(component =>
+                    component.rectTransform?.parent != null &&
+                    component.rectTransform.parent.Pointer == holder.Pointer);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+        internal IEnumerable<UIHorizontalList_UI2> Lists
+        {
+            get
+            {
+                yield return UnitCost;
+                yield return BuildingCost;
+                yield return EnemyHealth;
             }
         }
         internal IEnumerable<UIBasicComponent> Components
@@ -736,10 +900,14 @@ internal static class AdvancedSettingsLayoutPatch
 {
     [HarmonyPrefix]
     private static void AddRowsBeforeLayout(GameSetupScreen_UI2 __instance) => AdvancedMatchSettings.EnsureControls(__instance);
+}
 
-    [HarmonyPostfix]
-    private static void RestoreRowsAfterLayout(GameSetupScreen_UI2 __instance) =>
-        AdvancedMatchSettings.RefreshVisibilityAfterLayout(__instance);
+[HarmonyPatch(typeof(GameSetupScreenView), nameof(GameSetupScreenView.RunLayout))]
+internal static class AdvancedSettingsViewLayoutPatch
+{
+    [HarmonyPrefix]
+    private static void PrepareRowsForNativeLayout(GameSetupScreenView __instance) =>
+        AdvancedMatchSettings.PrepareViewLayout(__instance);
 }
 
 [HarmonyPatch(typeof(GameSetupScreen_UI2), "OnAdvancedSettingsToggleClicked")]

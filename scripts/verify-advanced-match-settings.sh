@@ -12,12 +12,22 @@ grep -Fq '"Enemy unit health"' "$source_file"
 grep -Fq '25, 50, 100, 150, 200, 300, 500' "$source_file"
 grep -Fq 'AdvancedSettingsOnShowPatch' "$source_file"
 grep -Fq 'AdvancedSettingsLayoutPatch' "$source_file"
+grep -Fq 'AdvancedSettingsViewLayoutPatch' "$source_file"
 grep -Fq 'AdvancedSettingsTogglePatch' "$source_file"
-grep -Fq 'KeepNativeMapRowsVisible' "$source_file"
+grep -Fq 'UILibrary.NewHorizontalList(holder)' "$source_file"
+grep -Fq 'UILibrary.NewText(holder, text)' "$source_file"
+grep -Fq 'ControlsByHolder' "$source_file"
+grep -Fq 'FindExistingControls' "$source_file"
+grep -Fq 'DiscardPartialOrDuplicateControls' "$source_file"
+grep -Fq 'PruneOtherControlHolders' "$source_file"
+grep -Fq 'Components.All(component =>' "$source_file"
 grep -Fq 'NormalizeComponentOrder' "$source_file"
-grep -Fq '(view.whatToShow & GameSetupScreenView.Show.MapTypeList) != 0' "$source_file"
-grep -Fq '(view.whatToShow & GameSetupScreenView.Show.MapSizeList) != 0' "$source_file"
-grep -Fq 'ControlsByView.Remove(view.Pointer);' "$source_file"
+grep -Fq 'view.whatToShow |= GameSetupScreenView.Show.MapTypeList' "$source_file"
+grep -Fq 'view.whatToShow |= GameSetupScreenView.Show.MapSizeList' "$source_file"
+grep -Fq 'view.whatToShow &= ~GameSetupScreenView.Show.MapTypeList' "$source_file"
+grep -Fq 'view.whatToShow &= ~GameSetupScreenView.Show.MapSizeList' "$source_file"
+grep -Fq 'view.whatToShow |= GameSetupScreenView.Show.AdvancedSettingsToggle' "$source_file"
+grep -Fq 'PrepareViewLayout' "$source_file"
 grep -Fq 'screen.advancedSettingsExpanded == previouslyExpanded' "$source_file"
 grep -Fq 'screen.UpdateLayout();' "$source_file"
 grep -Fq 'GameType.SinglePlayer' "$source_file"
@@ -54,6 +64,16 @@ fi
 
 if grep -Fq 'screen.view.RunLayout' "$source_file"; then
   echo "Advanced settings must relayout through ScreenBase_UI2.UpdateLayout, not recurse into the view." >&2
+  exit 1
+fi
+
+if grep -Fq 'UnityEngine.Object.Instantiate(template.gameObject' "$source_file"; then
+  echo "Advanced rows must be clean native controls, not clones of a populated setup list." >&2
+  exit 1
+fi
+
+if grep -Fq 'RefreshVisibilityAfterLayout' "$source_file"; then
+  echo "Advanced rows must be made visible before native view layout, not afterward." >&2
   exit 1
 fi
 
