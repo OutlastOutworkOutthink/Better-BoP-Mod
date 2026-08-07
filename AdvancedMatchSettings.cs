@@ -32,8 +32,9 @@ internal static class AdvancedMatchSettings
 
     private static readonly int[] Percentages = { 25, 50, 100, 150, 200, 300, 500 };
     private static readonly string[] Labels = { "25%", "50%", "100%", "150%", "200%", "300%", "500%" };
-    private static readonly Dictionary<IntPtr, Controls> ControlsByHolder = new();
-    private static readonly Dictionary<IntPtr, float> NativeContentHeightByScroller = new();
+    private static readonly UnitData.Type[] UnitTypes = Enum.GetValues<UnitData.Type>();
+    private static readonly ImprovementData.Type[] ImprovementTypes = Enum.GetValues<ImprovementData.Type>();
+    private static readonly Dictionary<IntPtr, Controls> ControlsByParent = new();
     private static ManualLogSource logger = null!;
     private static RuleSet pendingRules = RuleSet.Default;
     private static RuleSet activeRules = RuleSet.Default;
@@ -41,7 +42,6 @@ internal static class AdvancedMatchSettings
     private static bool hasActiveRulesOwner;
     [ThreadStatic] private static int unitCostScopeDepth;
     [ThreadStatic] private static int buildingCostScopeDepth;
-    [ThreadStatic] private static bool relayoutingScroller;
     private static int discardedControlSerial;
     private static DateTime pendingSinceUtc;
     private static bool pending;
@@ -60,6 +60,7 @@ internal static class AdvancedMatchSettings
     {
         if (!IsSupportedSetup()) return;
         pendingRules = SelectedRules();
+        PlayerPrefs.Save();
         activeRules = pendingRules;
         hasActiveRulesOwner = false;
         pendingSinceUtc = DateTime.UtcNow;
@@ -121,47 +122,44 @@ internal static class AdvancedMatchSettings
             return false;
         }
 
-        if (view.holder == null) return false;
+        RectTransform? parent = ControlParent(view);
+        if (parent == null) return false;
 
         try
         {
-            IntPtr holderKey = view.holder.Pointer;
-            PruneOtherControlHolders(holderKey);
-            ControlsByHolder.TryGetValue(holderKey, out Controls? controls);
-            if (controls != null && (!controls.IsAlive || !controls.IsUnder(view.holder)))
+            IntPtr parentKey = parent.Pointer;
+            PruneOtherControlParents(parentKey);
+            ControlsByParent.TryGetValue(parentKey, out Controls? controls);
+            if (controls != null && (!controls.IsAlive || !controls.IsUnder(parent)))
             {
-                ControlsByHolder.Remove(holderKey);
+                ControlsByParent.Remove(parentKey);
                 controls = null;
             }
 
             if (controls == null)
             {
-                controls = FindExistingControls(view.holder);
+                controls = FindExistingControls(parent);
                 if (controls == null)
                 {
-                    DiscardPartialOrDuplicateControls(view);
-                    controls = CreateControls(view.holder);
+                    DiscardPartialOrDuplicateControls(view, parent);
+                    controls = CreateControls(parent);
                     logger.LogInfo("Created one clean set of three advanced match setting rows.");
                 }
-                ControlsByHolder[holderKey] = controls;
+                ControlsByParent[parentKey] = controls;
             }
 
             BindToggle(screen, controls);
             controls.Expanded = screen.advancedSettingsExpanded;
             controls.ShowMapType = HasListData(screen.mapTypeData);
             controls.ShowMapSize = HasListData(screen.mapSizeData);
-            ApplyNativeSetupRows(view, controls);
-            NormalizeComponentOrder(view, controls);
             RefreshControls(controls);
-            SetToggleState(controls);
-            SetRowsVisible(controls, controls.Expanded);
             return true;
         }
         catch (Exception exception)
         {
             try
             {
-                if (view.holder != null) ControlsByHolder.Remove(view.holder.Pointer);
+                if (parent != null) ControlsByParent.Remove(parent.Pointer);
             }
             catch { }
             logger.LogWarning($"Could not render advanced match settings yet: {exception.Message}");
@@ -179,28 +177,19 @@ internal static class AdvancedMatchSettings
         SetRowsVisible(controls, controls.Expanded);
     }
 
-    internal static void CaptureNativeScrollerHeight(UIScroller_UI2 scroller, float contentHeight)
-    {
-        if (relayoutingScroller || scroller == null || scroller.Pointer == IntPtr.Zero) return;
-        NativeContentHeightByScroller[scroller.Pointer] = contentHeight;
-    }
-
-    internal static void FinalizeViewLayout(GameSetupScreenView view, ScreenBase_UI2.ScreenSize screenSize)
+    internal static void FinalizeViewLayout(GameSetupScreenView view)
     {
         Controls? controls = ControlsFor(view);
         if (controls == null || !IsSupportedSetup() || view.continueButton == null) return;
 
         try
         {
-            SetToggleState(controls);
-            SetRowsVisible(controls, controls.Expanded);
             foreach (UIHorizontalList_UI2 list in controls.Lists) list.UpdateLayout();
             foreach (TextField_UI2 description in controls.Descriptions) description.UpdateSize();
 
             // Continue is the final stock row and has already been positioned by
             // Polytopia. Insert the custom block exactly at that native boundary.
-            float oldContinueTop = view.continueButton.GetTop();
-            float cursorTop = oldContinueTop;
+            float cursorTop = view.continueButton.GetTop();
             controls.Toggle.SetPositionTopY(controls.Toggle.GetX(), cursorTop);
             cursorTop = controls.Toggle.GetBottom();
 
@@ -214,35 +203,11 @@ internal static class AdvancedMatchSettings
             }
 
             view.continueButton.SetPositionTopY(view.continueButton.GetX(), cursorTop);
-            float addedHeight = oldContinueTop - view.continueButton.GetTop();
-            ResizeScrollerForCustomRows(view.scroller, screenSize, addedHeight);
+            view.scroller?.UpdateContentBounds();
         }
         catch (Exception exception)
         {
             logger.LogWarning($"Could not finalize advanced setting row positions: {exception.Message}");
-        }
-    }
-
-    private static void ResizeScrollerForCustomRows(
-        UIScroller_UI2? scroller,
-        ScreenBase_UI2.ScreenSize screenSize,
-        float addedHeight
-    )
-    {
-        if (scroller == null || addedHeight <= 0f ||
-            !NativeContentHeightByScroller.TryGetValue(scroller.Pointer, out float nativeContentHeight))
-            return;
-
-        try
-        {
-            relayoutingScroller = true;
-            scroller.LayoutPageScroller(ref screenSize, nativeContentHeight + addedHeight, false);
-            scroller.LayoutTopFade(screenSize);
-            scroller.UpdateContentBounds();
-        }
-        finally
-        {
-            relayoutingScroller = false;
         }
     }
 
@@ -290,25 +255,24 @@ internal static class AdvancedMatchSettings
         controls.Toggle.RunLayout();
     }
 
-    internal static UnitCostScope BeginUnitCostScope(GameState? state, UnitData.Type? only = null)
+    internal static UnitCostScope? BeginUnitCostScope(GameState? state, UnitData.Type? only = null)
     {
-        UnitCostScope scope = new();
-        if (state?.GameLogicData == null || !IsRulesOwnerTurn(state) || activeRules.UnitCostPercent == 100)
-            return scope;
-        if (unitCostScopeDepth != 0) return scope;
+        if (activeRules.UnitCostPercent == 100 || state?.GameLogicData == null || !IsRulesOwnerTurn(state))
+            return null;
+        if (unitCostScopeDepth != 0) return null;
         unitCostScopeDepth = 1;
-        scope.OwnsScope = true;
+        UnitCostScope scope = new() { OwnsScope = true };
 
-        HashSet<IntPtr> seen = new();
-        IEnumerable<UnitData.Type> types = only.HasValue
-            ? new[] { only.Value }
-            : Enum.GetValues(typeof(UnitData.Type)).Cast<UnitData.Type>();
+        HashSet<IntPtr>? seen = only.HasValue ? null : new();
+        ReadOnlySpan<UnitData.Type> types = only.HasValue
+            ? stackalloc UnitData.Type[] { only.Value }
+            : UnitTypes;
         foreach (UnitData.Type type in types)
         {
             try
             {
                 UnitData? data = state.GameLogicData.GetUnitData(type);
-                if (data == null || data.Pointer == IntPtr.Zero || !seen.Add(data.Pointer)) continue;
+                if (data == null || data.Pointer == IntPtr.Zero || (seen != null && !seen.Add(data.Pointer))) continue;
                 int original = data.cost;
                 int scaled = Scale(original, activeRules.UnitCostPercent);
                 if (scaled == original) continue;
@@ -323,25 +287,24 @@ internal static class AdvancedMatchSettings
         return scope;
     }
 
-    internal static BuildingCostScope BeginBuildingCostScope(GameState? state, ImprovementData.Type? only = null)
+    internal static BuildingCostScope? BeginBuildingCostScope(GameState? state, ImprovementData.Type? only = null)
     {
-        BuildingCostScope scope = new();
-        if (state?.GameLogicData == null || !IsRulesOwnerTurn(state) || activeRules.BuildingCostPercent == 100)
-            return scope;
-        if (buildingCostScopeDepth != 0) return scope;
+        if (activeRules.BuildingCostPercent == 100 || state?.GameLogicData == null || !IsRulesOwnerTurn(state))
+            return null;
+        if (buildingCostScopeDepth != 0) return null;
         buildingCostScopeDepth = 1;
-        scope.OwnsScope = true;
+        BuildingCostScope scope = new() { OwnsScope = true };
 
-        HashSet<IntPtr> seen = new();
-        IEnumerable<ImprovementData.Type> types = only.HasValue
-            ? new[] { only.Value }
-            : Enum.GetValues(typeof(ImprovementData.Type)).Cast<ImprovementData.Type>();
+        HashSet<IntPtr>? seen = only.HasValue ? null : new();
+        ReadOnlySpan<ImprovementData.Type> types = only.HasValue
+            ? stackalloc ImprovementData.Type[] { only.Value }
+            : ImprovementTypes;
         foreach (ImprovementData.Type type in types)
         {
             try
             {
                 ImprovementData? data = state.GameLogicData.GetImprovementData(type);
-                if (data == null || data.Pointer == IntPtr.Zero || !seen.Add(data.Pointer)) continue;
+                if (data == null || data.Pointer == IntPtr.Zero || (seen != null && !seen.Add(data.Pointer))) continue;
                 int original = data.cost;
                 int scaled = Scale(original, activeRules.BuildingCostPercent);
                 if (scaled == original) continue;
@@ -358,7 +321,8 @@ internal static class AdvancedMatchSettings
 
     internal static int ScaleEnemyMaxHealth(int value, UnitState? unit, GameState? state)
     {
-        if (unit == null || state == null || !TryGetRulesOwner(state, out byte rulesOwner) || unit.owner == rulesOwner ||
+        if (activeRules.EnemyHealthPercent == 100 || unit == null || state == null ||
+            !TryGetRulesOwner(state, out byte rulesOwner) || unit.owner == rulesOwner ||
             unit.owner == PlayerState.NO_PLAYER_ID || unit.owner == PlayerState.NATURE_PLAYER_ID)
             return value;
         return Scale(value, activeRules.EnemyHealthPercent);
@@ -366,7 +330,8 @@ internal static class AdvancedMatchSettings
 
     internal static void SetSpawnedUnitHealth(UnitState? unit, GameState? state)
     {
-        if (unit == null || state == null || !TryGetRulesOwner(state, out byte rulesOwner) || unit.owner == rulesOwner ||
+        if (activeRules.EnemyHealthPercent == 100 || unit == null || state == null ||
+            !TryGetRulesOwner(state, out byte rulesOwner) || unit.owner == rulesOwner ||
             unit.owner == PlayerState.NO_PLAYER_ID || unit.owner == PlayerState.NATURE_PLAYER_ID)
             return;
 
@@ -385,6 +350,8 @@ internal static class AdvancedMatchSettings
         UIHorizontalList_UI2 list = UILibrary.NewHorizontalList(holder);
         list.gameObject.name = name;
         if (!list.Initialized) list.Init();
+        if (list.scroller != null) list.scroller.routeToParent = true;
+
         SignalPayload<int> signal = new();
         signal.Add(DelegateSupport.ConvertDelegate<Il2CppSystem.Action<int>>(onSelected));
         list.onItemSelected = signal;
@@ -466,24 +433,45 @@ internal static class AdvancedMatchSettings
     private static bool HasListData(UIHorizontalListData? data) =>
         data?.labels != null && data.labels.Count > 0;
 
+    private static RectTransform? ControlParent(GameSetupScreenView? view) => view?.scroller?.content;
+
+    internal static void CommitHighlighted(UIHorizontalList_UI2? list)
+    {
+        if (list?.gameObject == null) return;
+        int index = list.HighlightedIndex;
+        if (index < 0 || index >= Percentages.Length || index == list.SelectedIndex) return;
+        string? key = list.gameObject.name switch
+        {
+            UnitListName => UnitSelectionKey,
+            BuildingListName => BuildingSelectionKey,
+            HealthListName => EnemyHealthSelectionKey,
+            _ => null
+        };
+        if (key == null) return;
+        list.SelectedIndex = index;
+        list.UpdateAllButtonStyles();
+        SaveIndex(key, index);
+    }
+
     private static Controls? ControlsFor(GameSetupScreenView? view)
     {
-        if (view?.holder == null) return null;
-        IntPtr key = view.holder.Pointer;
-        if (!ControlsByHolder.TryGetValue(key, out Controls? controls)) return null;
-        if (controls.IsAlive && controls.IsUnder(view.holder)) return controls;
-        ControlsByHolder.Remove(key);
+        RectTransform? parent = ControlParent(view);
+        if (parent == null) return null;
+        IntPtr key = parent.Pointer;
+        if (!ControlsByParent.TryGetValue(key, out Controls? controls)) return null;
+        if (controls.IsAlive && controls.IsUnder(parent)) return controls;
+        ControlsByParent.Remove(key);
         return null;
     }
 
-    private static void PruneOtherControlHolders(IntPtr currentHolder)
+    private static void PruneOtherControlParents(IntPtr currentParent)
     {
-        foreach ((IntPtr holder, Controls controls) in ControlsByHolder.ToArray())
+        foreach ((IntPtr parent, Controls controls) in ControlsByParent.ToArray())
         {
-            if (holder == currentHolder) continue;
+            if (parent == currentParent) continue;
             try { SetAllVisible(controls, false); }
             catch { }
-            ControlsByHolder.Remove(holder);
+            ControlsByParent.Remove(parent);
         }
     }
 
@@ -554,14 +542,14 @@ internal static class AdvancedMatchSettings
         ToggleName or UnitListName or UnitDescriptionName or BuildingListName or BuildingDescriptionName or
         HealthListName or HealthDescriptionName;
 
-    private static void DiscardPartialOrDuplicateControls(GameSetupScreenView view)
+    private static void DiscardPartialOrDuplicateControls(GameSetupScreenView view, RectTransform parent)
     {
         List<UIBasicComponent> discarded = new();
-        foreach (UILabelButton_UI2 candidate in view.holder.GetComponentsInChildren<UILabelButton_UI2>(true))
+        foreach (UILabelButton_UI2 candidate in parent.GetComponentsInChildren<UILabelButton_UI2>(true))
             if (candidate?.gameObject != null && IsCustomName(candidate.gameObject.name)) discarded.Add(candidate);
-        foreach (UIHorizontalList_UI2 candidate in view.holder.GetComponentsInChildren<UIHorizontalList_UI2>(true))
+        foreach (UIHorizontalList_UI2 candidate in parent.GetComponentsInChildren<UIHorizontalList_UI2>(true))
             if (candidate?.gameObject != null && IsCustomName(candidate.gameObject.name)) discarded.Add(candidate);
-        foreach (TextField_UI2 candidate in view.holder.GetComponentsInChildren<TextField_UI2>(true))
+        foreach (TextField_UI2 candidate in parent.GetComponentsInChildren<TextField_UI2>(true))
             if (candidate?.gameObject != null && IsCustomName(candidate.gameObject.name)) discarded.Add(candidate);
         if (discarded.Count == 0) return;
 
@@ -604,21 +592,16 @@ internal static class AdvancedMatchSettings
     private static void NormalizeComponentOrder(GameSetupScreenView view, Controls controls)
     {
         if (view.allComponents == null) return;
-
-        List<IUILayoutable> ordered = controls.LayoutComponents
-            .Select(AsLayoutable)
-            .Where(layout => layout != null)
-            .Select(layout => layout!)
-            .ToList();
-        if (ordered.Count != 7) return;
-
-        HashSet<IntPtr> managedPointers = ordered.Select(layout => layout.Pointer).ToHashSet();
+        IUILayoutable[] ordered = controls.Layouts;
+        if (ordered.Length != 7) return;
         IUILayoutable? nativeToggle = AsLayoutable(view.advancedSettingsToggle);
-        if (nativeToggle != null) managedPointers.Add(nativeToggle.Pointer);
         for (int index = view.allComponents.Count - 1; index >= 0; index--)
         {
             IUILayoutable? entry = view.allComponents[index];
-            if (entry != null && managedPointers.Contains(entry.Pointer)) view.allComponents.RemoveAt(index);
+            if (entry == null) continue;
+            bool managed = nativeToggle != null && entry.Pointer == nativeToggle.Pointer;
+            for (int i = 0; !managed && i < ordered.Length; i++) managed = entry.Pointer == ordered[i].Pointer;
+            if (managed) view.allComponents.RemoveAt(index);
         }
 
         int continueIndex = FindComponentIndex(view, view.continueButton);
@@ -637,20 +620,19 @@ internal static class AdvancedMatchSettings
 
     private static void NormalizeSiblingOrder(GameSetupScreenView view, Controls controls)
     {
+        RectTransform? parent = ControlParent(view);
         RectTransform? continueTransform = view.continueButton?.rectTransform;
-        if (continueTransform == null || view.holder == null) return;
-        List<RectTransform> transforms = controls.LayoutComponents
-            .Select(component => component.rectTransform)
-            .Where(transform => transform?.parent != null && transform.parent.Pointer == view.holder.Pointer)
-            .Select(transform => transform!)
-            .ToList();
-        if (transforms.Count != 7) return;
+        if (continueTransform?.parent == null || parent == null || continueTransform.parent.Pointer != parent.Pointer) return;
+        RectTransform[] transforms = controls.Transforms;
+        if (transforms.Length != 7) return;
+        foreach (RectTransform transform in transforms)
+            if (transform?.parent == null || transform.parent.Pointer != parent.Pointer) return;
 
         // Move the whole managed block behind Continue first. Every subsequent
         // move therefore has a stable source after Continue and inserts the next
         // row immediately before it, making repeated layout passes idempotent.
         foreach (RectTransform transform in transforms)
-            transform.SetSiblingIndex(view.holder.childCount - 1);
+            transform.SetSiblingIndex(parent.childCount - 1);
         foreach (RectTransform transform in transforms)
         {
             transform.SetSiblingIndex(continueTransform.GetSiblingIndex());
@@ -660,11 +642,16 @@ internal static class AdvancedMatchSettings
     private static void NormalizeAllLists(GameSetupScreenView view, Controls controls)
     {
         if (view.allLists == null) return;
-        HashSet<IntPtr> pointers = controls.Lists.Select(list => list.Pointer).ToHashSet();
         for (int index = view.allLists.Count - 1; index >= 0; index--)
         {
             UIHorizontalList_UI2? list = view.allLists[index];
-            if (list != null && pointers.Contains(list.Pointer)) view.allLists.RemoveAt(index);
+            if (list == null) continue;
+            foreach (UIHorizontalList_UI2 managed in controls.Lists)
+            {
+                if (managed.Pointer != list.Pointer) continue;
+                view.allLists.RemoveAt(index);
+                break;
+            }
         }
         foreach (UIHorizontalList_UI2 list in controls.Lists) view.allLists.Add(list);
     }
@@ -859,6 +846,7 @@ internal static class AdvancedMatchSettings
 
     internal static ConversionHealthSnapshot CaptureConversionHealth(ConvertAction? action, GameState? state)
     {
+        if (activeRules.EnemyHealthPercent == 100) return default;
         UnitState? unit = UnitAt(action?.Target, state);
         return unit == null || state == null
             ? default
@@ -943,9 +931,8 @@ internal static class AdvancedMatchSettings
     private static void SetEnemyHealthIndex(int index) => SaveIndex(EnemyHealthSelectionKey, index);
     private static void SaveIndex(string key, int index)
     {
-        if (index < 0 || index >= Percentages.Length) return;
+        if (index < 0 || index >= Percentages.Length || ReadIndex(key) == index) return;
         PlayerPrefs.SetInt(key, index);
-        PlayerPrefs.Save();
     }
 
     private sealed class Controls
@@ -957,6 +944,12 @@ internal static class AdvancedMatchSettings
         internal readonly TextField_UI2 BuildingDescription;
         internal readonly UIHorizontalList_UI2 EnemyHealth;
         internal readonly TextField_UI2 HealthDescription;
+        internal readonly UIHorizontalList_UI2[] Lists;
+        internal readonly TextField_UI2[] Descriptions;
+        internal readonly UIBasicComponent[] Rows;
+        internal readonly UIBasicComponent[] LayoutComponents;
+        internal readonly IUILayoutable[] Layouts;
+        internal readonly RectTransform[] Transforms;
         internal bool Expanded;
         internal bool ShowMapType;
         internal bool ShowMapSize;
@@ -980,6 +973,15 @@ internal static class AdvancedMatchSettings
             BuildingDescription = buildingDescription;
             EnemyHealth = enemyHealth;
             HealthDescription = healthDescription;
+            Lists = new[] { unitCost, buildingCost, enemyHealth };
+            Descriptions = new[] { unitDescription, buildingDescription, healthDescription };
+            Rows = new UIBasicComponent[]
+                { unitCost, unitDescription, buildingCost, buildingDescription, enemyHealth, healthDescription };
+            LayoutComponents = new UIBasicComponent[]
+                { toggle, unitCost, unitDescription, buildingCost, buildingDescription, enemyHealth, healthDescription };
+            Layouts = LayoutComponents.Select(AsLayoutable).Where(layout => layout != null).Select(layout => layout!).ToArray();
+            Transforms = LayoutComponents.Select(component => component.rectTransform).Where(transform => transform != null)
+                .Select(transform => transform!).ToArray();
         }
 
         internal bool IsAlive
@@ -1009,44 +1011,6 @@ internal static class AdvancedMatchSettings
             catch
             {
                 return false;
-            }
-        }
-        internal IEnumerable<UIHorizontalList_UI2> Lists
-        {
-            get
-            {
-                yield return UnitCost;
-                yield return BuildingCost;
-                yield return EnemyHealth;
-            }
-        }
-        internal IEnumerable<TextField_UI2> Descriptions
-        {
-            get
-            {
-                yield return UnitDescription;
-                yield return BuildingDescription;
-                yield return HealthDescription;
-            }
-        }
-        internal IEnumerable<UIBasicComponent> Rows
-        {
-            get
-            {
-                yield return UnitCost;
-                yield return UnitDescription;
-                yield return BuildingCost;
-                yield return BuildingDescription;
-                yield return EnemyHealth;
-                yield return HealthDescription;
-            }
-        }
-        internal IEnumerable<UIBasicComponent> LayoutComponents
-        {
-            get
-            {
-                yield return Toggle;
-                foreach (UIBasicComponent component in Rows) yield return component;
             }
         }
     }
@@ -1095,18 +1059,16 @@ internal static class AdvancedSettingsViewLayoutPatch
 
     [HarmonyPostfix]
     [HarmonyPriority(Priority.Last)]
-    private static void PositionRowsAfterNativeLayout(
-        GameSetupScreenView __instance,
-        ScreenBase_UI2.ScreenSize screenSize
-    ) => AdvancedMatchSettings.FinalizeViewLayout(__instance, screenSize);
+    private static void PositionRowsAfterNativeLayout(GameSetupScreenView __instance) =>
+        AdvancedMatchSettings.FinalizeViewLayout(__instance);
 }
 
-[HarmonyPatch(typeof(UIScroller_UI2), nameof(UIScroller_UI2.LayoutPageScroller))]
-internal static class AdvancedSettingsScrollerLayoutPatch
+[HarmonyPatch(typeof(UIHorizontalList_UI2), "OnDragEnded")]
+internal static class AdvancedSettingsDragCommitPatch
 {
-    [HarmonyPrefix]
-    private static void CaptureNativeContentHeight(UIScroller_UI2 __instance, float contentHeight) =>
-        AdvancedMatchSettings.CaptureNativeScrollerHeight(__instance, contentHeight);
+    [HarmonyPostfix]
+    private static void CommitSelection(UIHorizontalList_UI2 __instance) =>
+        AdvancedMatchSettings.CommitHighlighted(__instance);
 }
 
 [HarmonyPatch(typeof(GameSetupScreen_UI2), "OnContinueClicked_StartMultiplayerGame")]
@@ -1159,11 +1121,11 @@ internal static class AdvancedSettingsGameReadyPatch
 internal static class AdvancedUnitCostUiPatch
 {
     [HarmonyPrefix]
-    private static void Apply(out AdvancedMatchSettings.UnitCostScope __state) =>
+    private static void Apply(out AdvancedMatchSettings.UnitCostScope? __state) =>
         __state = AdvancedMatchSettings.BeginUnitCostScope(GameManager.GameState);
 
     [HarmonyFinalizer]
-    private static Exception? Restore(Exception? __exception, AdvancedMatchSettings.UnitCostScope __state)
+    private static Exception? Restore(Exception? __exception, AdvancedMatchSettings.UnitCostScope? __state)
     {
         __state?.Restore();
         return __exception;
@@ -1174,11 +1136,11 @@ internal static class AdvancedUnitCostUiPatch
 internal static class AdvancedUnitCostValidationPatch
 {
     [HarmonyPrefix]
-    private static void Apply(TrainCommand __instance, GameState state, out AdvancedMatchSettings.UnitCostScope __state) =>
+    private static void Apply(TrainCommand __instance, GameState state, out AdvancedMatchSettings.UnitCostScope? __state) =>
         __state = AdvancedMatchSettings.BeginUnitCostScope(state, __instance.Type);
 
     [HarmonyFinalizer]
-    private static Exception? Restore(Exception? __exception, AdvancedMatchSettings.UnitCostScope __state)
+    private static Exception? Restore(Exception? __exception, AdvancedMatchSettings.UnitCostScope? __state)
     {
         __state?.Restore();
         return __exception;
@@ -1189,11 +1151,11 @@ internal static class AdvancedUnitCostValidationPatch
 internal static class AdvancedUnitCostExecutionPatch
 {
     [HarmonyPrefix]
-    private static void Apply(TrainCommand __instance, GameState state, out AdvancedMatchSettings.UnitCostScope __state) =>
+    private static void Apply(TrainCommand __instance, GameState state, out AdvancedMatchSettings.UnitCostScope? __state) =>
         __state = AdvancedMatchSettings.BeginUnitCostScope(state, __instance.Type);
 
     [HarmonyFinalizer]
-    private static Exception? Restore(Exception? __exception, AdvancedMatchSettings.UnitCostScope __state)
+    private static Exception? Restore(Exception? __exception, AdvancedMatchSettings.UnitCostScope? __state)
     {
         __state?.Restore();
         return __exception;
@@ -1204,11 +1166,11 @@ internal static class AdvancedUnitCostExecutionPatch
 internal static class AdvancedBuildingCostUiPatch
 {
     [HarmonyPrefix]
-    private static void Apply(out AdvancedMatchSettings.BuildingCostScope __state) =>
+    private static void Apply(out AdvancedMatchSettings.BuildingCostScope? __state) =>
         __state = AdvancedMatchSettings.BeginBuildingCostScope(GameManager.GameState);
 
     [HarmonyFinalizer]
-    private static Exception? Restore(Exception? __exception, AdvancedMatchSettings.BuildingCostScope __state)
+    private static Exception? Restore(Exception? __exception, AdvancedMatchSettings.BuildingCostScope? __state)
     {
         __state?.Restore();
         return __exception;
@@ -1219,11 +1181,11 @@ internal static class AdvancedBuildingCostUiPatch
 internal static class AdvancedBuildingCostValidationPatch
 {
     [HarmonyPrefix]
-    private static void Apply(BuildCommand __instance, GameState state, out AdvancedMatchSettings.BuildingCostScope __state) =>
+    private static void Apply(BuildCommand __instance, GameState state, out AdvancedMatchSettings.BuildingCostScope? __state) =>
         __state = AdvancedMatchSettings.BeginBuildingCostScope(state, __instance.Type);
 
     [HarmonyFinalizer]
-    private static Exception? Restore(Exception? __exception, AdvancedMatchSettings.BuildingCostScope __state)
+    private static Exception? Restore(Exception? __exception, AdvancedMatchSettings.BuildingCostScope? __state)
     {
         __state?.Restore();
         return __exception;
@@ -1234,11 +1196,11 @@ internal static class AdvancedBuildingCostValidationPatch
 internal static class AdvancedBuildingCostExecutionPatch
 {
     [HarmonyPrefix]
-    private static void Apply(BuildCommand __instance, GameState state, out AdvancedMatchSettings.BuildingCostScope __state) =>
+    private static void Apply(BuildCommand __instance, GameState state, out AdvancedMatchSettings.BuildingCostScope? __state) =>
         __state = AdvancedMatchSettings.BeginBuildingCostScope(state, __instance.Type);
 
     [HarmonyFinalizer]
-    private static Exception? Restore(Exception? __exception, AdvancedMatchSettings.BuildingCostScope __state)
+    private static Exception? Restore(Exception? __exception, AdvancedMatchSettings.BuildingCostScope? __state)
     {
         __state?.Restore();
         return __exception;
