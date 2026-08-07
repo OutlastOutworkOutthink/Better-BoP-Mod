@@ -22,11 +22,12 @@ grep -Fq 'controls.ToggleAction = DelegateSupport.ConvertDelegate<Il2CppSystem.A
 grep -Fq 'private static void ToggleAdvanced(GameSetupScreen_UI2 screen)' "$source_file"
 grep -Fq 'UILibrary.NewHorizontalList(holder)' "$source_file"
 grep -Fq 'UILibrary.NewText(holder, text)' "$source_file"
-grep -Fq 'ControlsByHolder' "$source_file"
+grep -Fq 'ControlsByParent' "$source_file"
+grep -Fq 'view?.scroller?.content' "$source_file"
 grep -Fq 'FindExistingControls' "$source_file"
 grep -Fq 'DiscardPartialOrDuplicateControls' "$source_file"
-grep -Fq 'PruneOtherControlHolders' "$source_file"
-grep -Fq 'Components.All(component =>' "$source_file"
+grep -Fq 'PruneOtherControlParents' "$source_file"
+grep -Fq 'LayoutComponents.All(component =>' "$source_file"
 grep -Fq 'NormalizeComponentOrder' "$source_file"
 grep -Fq 'view.whatToShow |= GameSetupScreenView.Show.MapTypeList' "$source_file"
 grep -Fq 'view.whatToShow |= GameSetupScreenView.Show.MapSizeList' "$source_file"
@@ -35,19 +36,21 @@ grep -Fq 'view.whatToShow &= ~GameSetupScreenView.Show.MapSizeList' "$source_fil
 grep -Fq 'view.whatToShow &= ~GameSetupScreenView.Show.AdvancedSettingsToggle' "$source_file"
 grep -Fq 'FindComponentIndex(view, view.continueButton)' "$source_file"
 grep -Fq 'NormalizeSiblingOrder' "$source_file"
-grep -Fq 'transform.SetSiblingIndex(view.holder.childCount - 1)' "$source_file"
+grep -Fq 'transform.SetSiblingIndex(parent.childCount - 1)' "$source_file"
 grep -Fq 'transform.SetSiblingIndex(continueTransform.GetSiblingIndex())' "$source_file"
 grep -Fq 'PrepareViewLayout' "$source_file"
 grep -Fq 'FinalizeViewLayout' "$source_file"
-grep -Fq 'AdvancedSettingsScrollerLayoutPatch' "$source_file"
-grep -Fq 'CaptureNativeScrollerHeight' "$source_file"
+grep -Fq 'AdvancedSettingsDragCommitPatch' "$source_file"
+grep -Fq '"OnDragEnded"' "$source_file"
+grep -Fq 'CommitHighlighted' "$source_file"
+grep -Fq 'list.scroller.routeToParent = true' "$source_file"
+grep -Fq 'list.onItemHighlighted = new SignalPayload<int>();' "$source_file"
 grep -Fq '[HarmonyPriority(Priority.Last)]' "$source_file"
-grep -Fq 'float oldContinueTop = view.continueButton.GetTop();' "$source_file"
+grep -Fq 'float cursorTop = view.continueButton.GetTop();' "$source_file"
 grep -Fq 'controls.Toggle.SetPositionTopY(controls.Toggle.GetX(), cursorTop)' "$source_file"
 grep -Fq 'row.SetPositionTopY(row.GetX(), cursorTop)' "$source_file"
 grep -Fq 'view.continueButton.SetPositionTopY(view.continueButton.GetX(), cursorTop)' "$source_file"
-grep -Fq 'nativeContentHeight + addedHeight' "$source_file"
-grep -Fq 'scroller.UpdateContentBounds();' "$source_file"
+grep -Fq 'view.scroller?.UpdateContentBounds();' "$source_file"
 grep -Fq 'screen.advancedSettingsExpanded = controls.Expanded;' "$source_file"
 grep -Fq 'screen.UpdateLayout();' "$source_file"
 grep -Fq 'GameType.SinglePlayer' "$source_file"
@@ -63,6 +66,9 @@ grep -Fq 'BeginUnitCostScope' "$source_file"
 grep -Fq 'BeginBuildingCostScope' "$source_file"
 grep -Fq 'unitCostScopeDepth' "$source_file"
 grep -Fq 'buildingCostScopeDepth' "$source_file"
+grep -Fq 'UnitCostScope?' "$source_file"
+grep -Fq 'BuildingCostScope?' "$source_file"
+grep -Fq 'activeRules.EnemyHealthPercent == 100' "$source_file"
 grep -Fq 'nameof(UnitDataExtensions.GetMaxHealth)' "$source_file"
 grep -Fq 'AdvancedConvertedUnitHealthPatch' "$source_file"
 grep -Fq 'GameRulesKeyPrefix' "$source_file"
@@ -104,6 +110,28 @@ fi
 
 if grep -Fq 'SetShowAdvancedSettingsToggleButton' "$source_file"; then
   echo "Advanced settings must not reactivate Polytopia's fixed pre-map toggle." >&2
+  exit 1
+fi
+
+if grep -Eq 'AdvancedSettingsScrollerLayoutPatch|CaptureNativeScrollerHeight|NativeContentHeightByScroller|LayoutPageScroller\(' "$source_file"; then
+  echo "Advanced rows must extend native scroll content, not relayout the global page scroller." >&2
+  exit 1
+fi
+
+if grep -Fq 'CreateControls(view.holder)' "$source_file" ||
+  grep -Fq 'view?.scroller?.content ?? view?.holder' "$source_file"; then
+  echo "Advanced controls must be created inside the actual page-scroller content." >&2
+  exit 1
+fi
+
+if grep -Fq 'list.onItemHighlighted = signal' "$source_file"; then
+  echo "Highlight changes must not persist repeatedly during horizontal dragging." >&2
+  exit 1
+fi
+
+save_index_body="$(sed -n '/private static void SaveIndex/,/^    }/p' "$source_file")"
+if grep -Fq 'PlayerPrefs.Save()' <<<"$save_index_body"; then
+  echo "Percentage changes must flush once at game start, not on each interaction." >&2
   exit 1
 fi
 
