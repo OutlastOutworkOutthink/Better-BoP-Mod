@@ -23,7 +23,8 @@ grep -Fq 'private static void ToggleAdvanced(GameSetupScreen_UI2 screen)' "$sour
 grep -Fq 'UILibrary.NewHorizontalList(holder)' "$source_file"
 grep -Fq 'UILibrary.NewText(holder, text)' "$source_file"
 grep -Fq 'ControlsByParent' "$source_file"
-grep -Fq 'view?.scroller?.content' "$source_file"
+grep -Fq 'view?.continueButton?.rectTransform' "$source_file"
+grep -Fq 'rectTransform?.parent?.TryCast<RectTransform>()' "$source_file"
 grep -Fq 'FindExistingControls' "$source_file"
 grep -Fq 'DiscardPartialOrDuplicateControls' "$source_file"
 grep -Fq 'PruneOtherControlParents' "$source_file"
@@ -40,9 +41,20 @@ grep -Fq 'transform.SetSiblingIndex(parent.childCount - 1)' "$source_file"
 grep -Fq 'transform.SetSiblingIndex(continueTransform.GetSiblingIndex())' "$source_file"
 grep -Fq 'PrepareViewLayout' "$source_file"
 grep -Fq 'FinalizeViewLayout' "$source_file"
-grep -Fq 'AdvancedSettingsDragCommitPatch' "$source_file"
-grep -Fq '"OnDragEnded"' "$source_file"
-grep -Fq 'CommitHighlighted' "$source_file"
+grep -Fq 'AdvancedSettingsDragSelectionPatch' "$source_file"
+grep -Fq 'nameof(UIHorizontalList_UI2.AnimateToIndex)' "$source_file"
+grep -Fq 'ref bool wasInitiatedByClick' "$source_file"
+grep -Fq 'SetupListPointers.Contains(list.Pointer)' "$source_file"
+grep -Fq 'TrackSetupLists(view)' "$source_file"
+grep -Fq 'RestoreRowsAfterLayout' "$source_file"
+grep -Fq 'if (!__state)' "$source_file"
+grep -Fq 'FinalizeViewLayout(__instance.view, !__state)' "$source_file"
+grep -Fq 'BeginSetupDragRelease' "$source_file"
+grep -Fq 'EndSetupDragRelease' "$source_file"
+grep -Fq 'AdvancedSettingsDragReleasePatch' "$source_file"
+grep -Fq 'nameof(UIHorizontalList_UI2.OnDragEnded)' "$source_file"
+grep -Fq 'AdvancedSettingsOnHidePatch' "$source_file"
+grep -Fq 'ClearSetupLists' "$source_file"
 grep -Fq 'list.scroller.routeToParent = true' "$source_file"
 grep -Fq 'list.onItemHighlighted = new SignalPayload<int>();' "$source_file"
 grep -Fq '[HarmonyPriority(Priority.Last)]' "$source_file"
@@ -98,8 +110,10 @@ if grep -Fq 'UnityEngine.Object.Instantiate(template.gameObject' "$source_file";
   exit 1
 fi
 
-if grep -Fq 'RefreshVisibilityAfterLayout' "$source_file"; then
-  echo "Advanced rows must be made visible before native view layout, not afterward." >&2
+finalize_body="$(sed -n '/internal static void FinalizeViewLayout/,/^    }/p' "$source_file")"
+if ! grep -Fq 'SetToggleState(controls);' <<<"$finalize_body" ||
+  ! grep -Fq 'SetRowsVisible(controls, controls.Expanded);' <<<"$finalize_body"; then
+  echo "Native view layout resets custom visibility; the postfix must restore the toggle and rows." >&2
   exit 1
 fi
 
@@ -119,12 +133,13 @@ if grep -Eq 'AdvancedSettingsScrollerLayoutPatch|CaptureNativeScrollerHeight|Nat
 fi
 
 if grep -Fq 'CreateControls(view.holder)' "$source_file" ||
-  grep -Fq 'view?.scroller?.content ?? view?.holder' "$source_file"; then
-  echo "Advanced controls must be created inside the actual page-scroller content." >&2
+  grep -Fq 'view?.scroller?.content' "$source_file"; then
+  echo "Advanced controls must follow the native Continue row's actual parent." >&2
   exit 1
 fi
 
-if grep -Fq 'list.onItemHighlighted = signal' "$source_file"; then
+if grep -Fq 'list.onItemHighlighted = signal' "$source_file" ||
+  grep -Fq 'CommitHighlighted' "$source_file" || grep -Fq 'HighlightedIndex' "$source_file"; then
   echo "Highlight changes must not persist repeatedly during horizontal dragging." >&2
   exit 1
 fi
