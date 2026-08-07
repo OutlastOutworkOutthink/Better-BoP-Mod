@@ -35,6 +35,7 @@ internal static class AdvancedMatchSettings
     private static readonly UnitData.Type[] UnitTypes = Enum.GetValues<UnitData.Type>();
     private static readonly ImprovementData.Type[] ImprovementTypes = Enum.GetValues<ImprovementData.Type>();
     private static readonly Dictionary<IntPtr, Controls> ControlsByParent = new();
+    private static readonly HashSet<IntPtr> SetupListPointers = new();
     private static ManualLogSource logger = null!;
     private static RuleSet pendingRules = RuleSet.Default;
     private static RuleSet activeRules = RuleSet.Default;
@@ -42,6 +43,7 @@ internal static class AdvancedMatchSettings
     private static bool hasActiveRulesOwner;
     [ThreadStatic] private static int unitCostScopeDepth;
     [ThreadStatic] private static int buildingCostScopeDepth;
+    [ThreadStatic] private static bool setupDragRelease;
     private static int discardedControlSerial;
     private static DateTime pendingSinceUtc;
     private static bool pending;
@@ -177,32 +179,38 @@ internal static class AdvancedMatchSettings
         SetRowsVisible(controls, controls.Expanded);
     }
 
-    internal static void FinalizeViewLayout(GameSetupScreenView view)
+    internal static void FinalizeViewLayout(GameSetupScreenView view, bool positionRows = true)
     {
         Controls? controls = ControlsFor(view);
         if (controls == null || !IsSupportedSetup() || view.continueButton == null) return;
 
         try
         {
-            foreach (UIHorizontalList_UI2 list in controls.Lists) list.UpdateLayout();
-            foreach (TextField_UI2 description in controls.Descriptions) description.UpdateSize();
-
-            // Continue is the final stock row and has already been positioned by
-            // Polytopia. Insert the custom block exactly at that native boundary.
-            float cursorTop = view.continueButton.GetTop();
-            controls.Toggle.SetPositionTopY(controls.Toggle.GetX(), cursorTop);
-            cursorTop = controls.Toggle.GetBottom();
-
-            if (controls.Expanded)
+            // Native RunLayout resets visibility from its stock bit mask after
+            // our prefix. Restore the one mod-owned toggle and its saved rows.
+            SetToggleState(controls);
+            SetRowsVisible(controls, controls.Expanded);
+            if (positionRows)
             {
-                foreach (UIBasicComponent row in controls.Rows)
-                {
-                    row.SetPositionTopY(row.GetX(), cursorTop);
-                    cursorTop = row.GetBottom();
-                }
-            }
+                foreach (UIHorizontalList_UI2 list in controls.Lists) list.UpdateLayout();
+                foreach (TextField_UI2 description in controls.Descriptions) description.UpdateSize();
 
-            view.continueButton.SetPositionTopY(view.continueButton.GetX(), cursorTop);
+                // Continue is the final stock row and has already been positioned by
+                // Polytopia. Insert the custom block exactly at that native boundary.
+                float cursorTop = view.continueButton.GetTop();
+                controls.Toggle.SetPositionTopY(controls.Toggle.GetX(), cursorTop);
+                cursorTop = controls.Toggle.GetBottom();
+                if (controls.Expanded)
+                {
+                    foreach (UIBasicComponent row in controls.Rows)
+                    {
+                        row.SetPositionTopY(row.GetX(), cursorTop);
+                        cursorTop = row.GetBottom();
+                    }
+                }
+                view.continueButton.SetPositionTopY(view.continueButton.GetX(), cursorTop);
+            }
+            TrackSetupLists(view);
             view.scroller?.UpdateContentBounds();
         }
         catch (Exception exception)
@@ -433,25 +441,25 @@ internal static class AdvancedMatchSettings
     private static bool HasListData(UIHorizontalListData? data) =>
         data?.labels != null && data.labels.Count > 0;
 
-    private static RectTransform? ControlParent(GameSetupScreenView? view) => view?.scroller?.content;
+    private static RectTransform? ControlParent(GameSetupScreenView? view) =>
+        view?.continueButton?.rectTransform?.parent?.TryCast<RectTransform>();
 
-    internal static void CommitHighlighted(UIHorizontalList_UI2? list)
+    internal static bool BeginSetupDragRelease(UIHorizontalList_UI2? list) =>
+        setupDragRelease = list != null && SetupListPointers.Contains(list.Pointer);
+
+    internal static void EndSetupDragRelease() => setupDragRelease = false;
+
+    internal static void PromoteSetupDragToSelection(
+        UIHorizontalList_UI2? list,
+        ref bool wasInitiatedByClick
+    )
     {
-        if (list?.gameObject == null) return;
-        int index = list.HighlightedIndex;
-        if (index < 0 || index >= Percentages.Length || index == list.SelectedIndex) return;
-        string? key = list.gameObject.name switch
-        {
-            UnitListName => UnitSelectionKey,
-            BuildingListName => BuildingSelectionKey,
-            HealthListName => EnemyHealthSelectionKey,
-            _ => null
-        };
-        if (key == null) return;
-        list.SelectedIndex = index;
-        list.UpdateAllButtonStyles();
-        SaveIndex(key, index);
+        if (setupDragRelease && !wasInitiatedByClick && list != null &&
+            SetupListPointers.Contains(list.Pointer))
+            wasInitiatedByClick = true;
     }
+
+    internal static void ClearSetupLists() => SetupListPointers.Clear();
 
     private static Controls? ControlsFor(GameSetupScreenView? view)
     {
@@ -654,6 +662,14 @@ internal static class AdvancedMatchSettings
             }
         }
         foreach (UIHorizontalList_UI2 list in controls.Lists) view.allLists.Add(list);
+    }
+
+    private static void TrackSetupLists(GameSetupScreenView view)
+    {
+        SetupListPointers.Clear();
+        if (view.allLists == null) return;
+        foreach (UIHorizontalList_UI2? list in view.allLists)
+            if (list != null && list.Pointer != IntPtr.Zero) SetupListPointers.Add(list.Pointer);
     }
 
     private static int FindComponentIndex(GameSetupScreenView view, UIBasicComponent? component)
@@ -1047,7 +1063,24 @@ internal static class AdvancedSettingsOnShowPatch
 internal static class AdvancedSettingsLayoutPatch
 {
     [HarmonyPrefix]
-    private static void AddRowsBeforeLayout(GameSetupScreen_UI2 __instance) => AdvancedMatchSettings.EnsureControls(__instance);
+    private static void AddRowsBeforeLayout(GameSetupScreen_UI2 __instance, out bool __state) =>
+        __state = AdvancedMatchSettings.EnsureControls(__instance);
+
+    [HarmonyPostfix]
+    [HarmonyPriority(Priority.Last)]
+    private static void RestoreRowsAfterLayout(GameSetupScreen_UI2 __instance, bool __state)
+    {
+        if (__instance.view == null || (!__state && !AdvancedMatchSettings.EnsureControls(__instance))) return;
+        if (!__state) AdvancedMatchSettings.PrepareViewLayout(__instance.view);
+        AdvancedMatchSettings.FinalizeViewLayout(__instance.view, !__state);
+    }
+}
+
+[HarmonyPatch(typeof(GameSetupScreen_UI2), "OnHide")]
+internal static class AdvancedSettingsOnHidePatch
+{
+    [HarmonyPostfix]
+    private static void ForgetSetupLists() => AdvancedMatchSettings.ClearSetupLists();
 }
 
 [HarmonyPatch(typeof(GameSetupScreenView), nameof(GameSetupScreenView.RunLayout))]
@@ -1063,12 +1096,29 @@ internal static class AdvancedSettingsViewLayoutPatch
         AdvancedMatchSettings.FinalizeViewLayout(__instance);
 }
 
-[HarmonyPatch(typeof(UIHorizontalList_UI2), "OnDragEnded")]
-internal static class AdvancedSettingsDragCommitPatch
+[HarmonyPatch(typeof(UIHorizontalList_UI2), nameof(UIHorizontalList_UI2.AnimateToIndex))]
+internal static class AdvancedSettingsDragSelectionPatch
 {
-    [HarmonyPostfix]
-    private static void CommitSelection(UIHorizontalList_UI2 __instance) =>
-        AdvancedMatchSettings.CommitHighlighted(__instance);
+    [HarmonyPrefix]
+    private static void SelectReleasedItem(
+        UIHorizontalList_UI2 __instance,
+        ref bool wasInitiatedByClick
+    ) => AdvancedMatchSettings.PromoteSetupDragToSelection(__instance, ref wasInitiatedByClick);
+}
+
+[HarmonyPatch(typeof(UIHorizontalList_UI2), nameof(UIHorizontalList_UI2.OnDragEnded))]
+internal static class AdvancedSettingsDragReleasePatch
+{
+    [HarmonyPrefix]
+    private static void BeginRelease(UIHorizontalList_UI2 __instance, out bool __state) =>
+        __state = AdvancedMatchSettings.BeginSetupDragRelease(__instance);
+
+    [HarmonyFinalizer]
+    private static Exception? EndRelease(Exception? __exception, bool __state)
+    {
+        if (__state) AdvancedMatchSettings.EndSetupDragRelease();
+        return __exception;
+    }
 }
 
 [HarmonyPatch(typeof(GameSetupScreen_UI2), "OnContinueClicked_StartMultiplayerGame")]

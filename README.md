@@ -1,4 +1,4 @@
-# Better Battle of Polytopia Mod — Alpha 0.6.7
+# Better Battle of Polytopia Mod — Alpha 0.6.8
 
 This Alpha keeps the working Oblivion, Discord integration, and universal-peace
 behavior locked, then adds the isolated client for bot-created Modded games.
@@ -9,7 +9,7 @@ All other earlier gameplay and experimental UI changes remain inactive.
 Open **Creative**, continue to tribe/game setup, and select **Oblivion** in the
 same rule row as **Perfection**, **Domination**, and **Infinity**.
 
-Alpha 0.6.7 retains both the visible legacy setup row and UI2's later layout
+Alpha 0.6.8 retains both the visible legacy setup row and UI2's later layout
 callbacks, after Polytopia has actually created the game-mode controls.
 
 Oblivion keeps all normal Creative setup choices, but the match itself uses
@@ -135,11 +135,14 @@ Each list and its description has its own layout row, and only these three
 rows collapse. The mod creates clean native controls instead of cloning the
 already-populated Map Size row, recovers one named set across setup rebuilds,
 and removes incomplete or duplicate sets. Visibility and ordering are restored
-immediately before Polytopia's own view layout, so Map Type and Map Size remain
-above the toggle and every advanced entry receives its own row. The entire
-custom block is parented to Polytopia's page-scroller content, so the rows and
-Start Game move together. Vertical gestures over a percentage row route to the
-page, while a horizontal drag commits the centered value once when released.
+both before and after Polytopia's own view layout, because the native layout
+resets unknown rows from its stock visibility mask. Map Type and Map Size remain
+above the toggle and every advanced entry receives its own row. The custom block
+uses the native Start Game row's actual parent, so it cannot race an uninitialised
+scroller reference and the rows move with Start Game. Vertical gestures over a
+percentage row route to the page. Releasing any Game Setup horizontal row now
+promotes Polytopia's own snap animation to its native selection path, selecting
+the centred value without affecting horizontal lists on other screens.
 Price changes
 use short-lived scopes around Polytopia's native
 train/build UI, validation, and execution paths; the original shared data is
@@ -147,7 +150,7 @@ restored immediately and bots keep their normal prices. The 100% defaults exit
 before allocating a cost scope or resolving an owner, selections are flushed to
 disk only when starting a game, and no per-frame scan is added.
 
-Alpha 0.6.7 deliberately does not patch or mutate the home screen. The attempted
+Alpha 0.6.8 deliberately does not patch or mutate the home screen. The attempted
 version label in Alpha 0.6.2 could still terminate the native IL2CPP process
 immediately after `StartScreen.Init()` without producing a managed exception.
 The installed version remains visible in PolyMod and `manifest.json`, and the
@@ -161,7 +164,7 @@ explicitly excluded from `BetterBoPMod.dll`. See
 
 ## Install
 
-Download the Alpha 0.6.7 release ZIP, extract it, and place the
+Download the Alpha 0.6.8 release ZIP, extract it, and place the
 `Better-BoP-Mod` folder directly inside Polytopia's `Mods` directory. These files
 must be together at that folder's top level:
 
@@ -177,7 +180,7 @@ converted into Oblivion games.
 The BepInEx log confirms a successful load with:
 
 ```text
-Better BoP Alpha 0.6.7 loaded: scroll-safe advanced settings with drag selection.
+Better BoP Alpha 0.6.8 loaded: lifecycle-safe advanced settings with native drag selection.
 ```
 
 ## Development

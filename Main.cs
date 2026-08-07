@@ -4,7 +4,7 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.6.7 keeps the locked gameplay baselines and removes all hooks from
+/// Alpha 0.6.8 keeps the locked gameplay baselines and removes all hooks from
 /// Polytopia's native home-screen lifecycle after Alpha 0.6.2 still caused a
 /// native IL2CPP crash immediately after StartScreen.Init().
 /// </summary>
@@ -100,9 +100,11 @@ public static class Main
         SafePatch(typeof(UniversalPeaceAIPreparePatch), logger);
 
         SafePatch(typeof(AdvancedSettingsOnShowPatch), logger);
+        SafePatch(typeof(AdvancedSettingsOnHidePatch), logger);
         SafePatch(typeof(AdvancedSettingsLayoutPatch), logger);
         SafePatch(typeof(AdvancedSettingsViewLayoutPatch), logger);
-        SafePatch(typeof(AdvancedSettingsDragCommitPatch), logger);
+        SafePatch(typeof(AdvancedSettingsDragSelectionPatch), logger);
+        SafePatch(typeof(AdvancedSettingsDragReleasePatch), logger);
         SafePatch(typeof(AdvancedSettingsSingleplayerStartPatch), logger);
         SafePatch(typeof(AdvancedSettingsMultiplayerStartPatch), logger);
         SafePatch(typeof(AdvancedSettingsMatchmakingStartPatch), logger);
@@ -118,7 +120,7 @@ public static class Main
         SafePatch(typeof(AdvancedEnemyHealthPatch), logger);
         SafePatch(typeof(AdvancedEnemySpawnHealthPatch), logger);
         SafePatch(typeof(AdvancedConvertedUnitHealthPatch), logger);
-        logger.LogMessage("Better BoP Alpha 0.6.7 loaded: scroll-safe advanced settings with drag selection.");
+        logger.LogMessage("Better BoP Alpha 0.6.8 loaded: lifecycle-safe advanced settings with native drag selection.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)

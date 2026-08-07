@@ -190,7 +190,7 @@ the reference assemblies, not that the patched screen executed correctly.
   Discord completion, and unchanged Elo. A compile cannot prove native IL2CPP
   session/player ownership behavior.
 
-## Advanced match handicaps (Alpha 0.6.7)
+## Advanced match handicaps (Alpha 0.6.8)
 
 - Reuse `GameSetupScreen_UI2.advancedSettingsExpanded`, but create a dedicated
   label toggle with `UILibrary.NewLabelButton` and each custom row with
@@ -207,16 +207,24 @@ the reference assemblies, not that the patched screen executed correctly.
   and sibling order in the `GameSetupScreenView.RunLayout` prefix. That native
   method does not vertically position unknown controls, so a last-priority
   postfix anchors the custom block below Map Size and moves Continue below the
-  active block. Parent all seven controls to `view.scroller.content`, then call
-  `UpdateContentBounds()` after repositioning; never call `LayoutPageScroller`
-  a second time or Start Game can move independently of the page. Set each
-  nested list's `routeToParent` so vertical gestures reach the page scroller.
-  Call public `UpdateLayout()` only after initial creation or a user toggle—
-  never recursively from inside the view-layout hook.
+  active block. Create all seven controls under the actual parent of the native
+  Continue/Start Game row; waiting for that row and retrying once after the
+  screen layout avoids racing an uninitialised scroller. Reassert visibility in
+  the last-priority view postfix because native `RunLayout` resets unknown
+  entries after the prefix. Call `UpdateContentBounds()` after repositioning;
+  never call `LayoutPageScroller` a second time or Start Game can move
+  independently of the page. Set each nested list's `routeToParent` so vertical
+  gestures reach the page scroller. Call public `UpdateLayout()` only after
+  initial creation or a user toggle—never recursively from inside the
+  view-layout hook.
 - `onItemHighlighted` fires repeatedly during a horizontal drag and must not
-  persist settings. Commit `HighlightedIndex` once in an `OnDragEnded` postfix
-  guarded by the three exact Better BoP list names. Keep click selection on
-  `onItemSelected`, and flush `PlayerPrefs` only when the game is armed.
+  persist settings, and `HighlightedIndex` is still stale when `OnDragEnded`
+  returns. Native drag release already calls `AnimateToIndex(index, false)` with
+  the correct centred index. For only the horizontal lists registered in the
+  active Game Setup view, promote that call to the native selection path by
+  changing its click-origin flag to true. This preserves Polytopia's own snap,
+  callback, disabled-item and style behavior for stock and custom rows. Flush
+  `PlayerPrefs` only when the game is armed.
 - Snapshot the three selected percentages when the host creates the game.
   Persist by game ID and embed a compact validated marker in `GameName` so a
   modded peer reads the same deterministic rules. Only strip a marker after all
