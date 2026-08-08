@@ -190,7 +190,7 @@ the reference assemblies, not that the patched screen executed correctly.
   Discord completion, and unchanged Elo. A compile cannot prove native IL2CPP
   session/player ownership behavior.
 
-## Advanced match handicaps (Alpha 0.6.8)
+## Advanced match handicaps (Alpha 0.6.9)
 
 - Reuse `GameSetupScreen_UI2.advancedSettingsExpanded`, but create a dedicated
   label toggle with `UILibrary.NewLabelButton` and each custom row with
@@ -235,11 +235,17 @@ the reference assemblies, not that the patched screen executed correctly.
 - Do not Harmony-patch `UnitData.get_cost` or `ImprovementData.get_cost` in an
   IL2CPP build. PolyMod identifies both as generated field accessors and cannot
   create a safe native patch backend. Instead, temporarily substitute scaled
-  values around `InteractionBar` price rendering and the matching
-  `TrainCommand`/`BuildCommand` validation and execution calls, then restore in
-  a Harmony finalizer. Cache enum values and return a null scope immediately at
-  the 100% default; command-specific paths use a one-item stack span instead of
-  allocating an array/set. Cache the rules and immutable rules owner when a
+  values around price rendering and command validation, then restore in a
+  Harmony finalizer. A `BuildCommand` only queues a deferred `BuildAction`; keep
+  the building scope active around `BuildAction.Execute` (when `DeductCost` is
+  true) or validation will require the scaled price while execution deducts the
+  base price. Guard that action by its `PlayerId` so replayed or bot actions
+  cannot inherit the local player's multiplier. Building info is rendered by
+  several UI entry points, so cover the interaction bar, unlock popup, tech
+  popup, and shared `BuildingUtils.GetInfo` path with one multi-target patch.
+  Cache enum values and return a null scope at the 100% default;
+  command-specific paths use a one-item stack span instead of allocating an
+  array/set. Cache the rules and immutable rules owner when a
   session opens; hot paths still require only an owner comparison and ceiling
   math.
 - Enemy units need their scaled current health filled when created. Conversion

@@ -76,6 +76,15 @@ grep -Fq 'AdvancedBuildingCostValidationPatch' "$source_file"
 grep -Fq 'AdvancedBuildingCostExecutionPatch' "$source_file"
 grep -Fq 'BeginUnitCostScope' "$source_file"
 grep -Fq 'BeginBuildingCostScope' "$source_file"
+grep -Fq 'typeof(BuildAction), nameof(BuildAction.Execute)' "$source_file"
+grep -Fq '__instance.DeductCost' "$source_file"
+grep -Fq '__instance.PlayerId' "$source_file"
+grep -Fq 'nameof(InteractionBar.ClickedImprovement)' "$source_file"
+grep -Fq 'nameof(InteractionBar.OnUnlockableClicked)' "$source_file"
+grep -Fq 'typeof(BuildingUtils), nameof(BuildingUtils.GetInfo)' "$source_file"
+grep -Fq 'typeof(TechUnlockButton), nameof(TechUnlockButton.SetBuildingData)' "$source_file"
+grep -Fq 'typeof(TechPopupContent), nameof(TechPopupContent.SetBuildingData)' "$source_file"
+grep -Fq 'ControlsByParent.Count == 1 && ControlsByParent.ContainsKey(currentParent)' "$source_file"
 grep -Fq 'unitCostScopeDepth' "$source_file"
 grep -Fq 'buildingCostScopeDepth' "$source_file"
 grep -Fq 'UnitCostScope?' "$source_file"
@@ -97,6 +106,11 @@ fi
 
 if grep -Eq 'HarmonyPatch\(typeof\((UnitData|ImprovementData)\), "get_cost"' "$source_file"; then
   echo "IL2CPP field accessors cannot be patched safely." >&2
+  exit 1
+fi
+
+if grep -Fq '[HarmonyPatch(typeof(BuildCommand), nameof(BuildCommand.Execute))]' "$source_file"; then
+  echo "BuildCommand only queues a deferred action; building deduction must be scoped at BuildAction.Execute." >&2
   exit 1
 fi
 

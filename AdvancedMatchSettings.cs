@@ -3,6 +3,7 @@ using HarmonyLib;
 using Il2CppInterop.Runtime;
 using Polytopia.Data;
 using PolytopiaBackendBase.Game;
+using System.Reflection;
 using UnityEngine;
 
 namespace BetterBoPMod;
@@ -269,7 +270,7 @@ internal static class AdvancedMatchSettings
             return null;
         if (unitCostScopeDepth != 0) return null;
         unitCostScopeDepth = 1;
-        UnitCostScope scope = new() { OwnsScope = true };
+        UnitCostScope scope = new();
 
         HashSet<IntPtr>? seen = only.HasValue ? null : new();
         ReadOnlySpan<UnitData.Type> types = only.HasValue
@@ -295,13 +296,18 @@ internal static class AdvancedMatchSettings
         return scope;
     }
 
-    internal static BuildingCostScope? BeginBuildingCostScope(GameState? state, ImprovementData.Type? only = null)
+    internal static BuildingCostScope? BeginBuildingCostScope(
+        GameState? state,
+        ImprovementData.Type? only = null,
+        byte? chargedPlayer = null
+    )
     {
-        if (activeRules.BuildingCostPercent == 100 || state?.GameLogicData == null || !IsRulesOwnerTurn(state))
+        if (activeRules.BuildingCostPercent == 100 || state?.GameLogicData == null ||
+            !TryGetRulesOwner(state, out byte rulesOwner) || (chargedPlayer ?? state.CurrentPlayer) != rulesOwner)
             return null;
         if (buildingCostScopeDepth != 0) return null;
         buildingCostScopeDepth = 1;
-        BuildingCostScope scope = new() { OwnsScope = true };
+        BuildingCostScope scope = new();
 
         HashSet<IntPtr>? seen = only.HasValue ? null : new();
         ReadOnlySpan<ImprovementData.Type> types = only.HasValue
@@ -474,6 +480,8 @@ internal static class AdvancedMatchSettings
 
     private static void PruneOtherControlParents(IntPtr currentParent)
     {
+        if (ControlsByParent.Count == 0 ||
+            (ControlsByParent.Count == 1 && ControlsByParent.ContainsKey(currentParent))) return;
         foreach ((IntPtr parent, Controls controls) in ControlsByParent.ToArray())
         {
             if (parent == currentParent) continue;
@@ -897,7 +905,6 @@ internal static class AdvancedMatchSettings
     {
         private readonly List<(UnitData Data, int Cost)> entries = new();
         private bool restored;
-        internal bool OwnsScope { private get; set; }
         internal void Add(UnitData data, int cost) => entries.Add((data, cost));
         internal void Restore()
         {
@@ -908,8 +915,7 @@ internal static class AdvancedMatchSettings
                 try { if (data != null && data.Pointer != IntPtr.Zero) data.cost = cost; }
                 catch { }
             }
-            entries.Clear();
-            if (OwnsScope) unitCostScopeDepth = 0;
+            unitCostScopeDepth = 0;
         }
     }
 
@@ -917,7 +923,6 @@ internal static class AdvancedMatchSettings
     {
         private readonly List<(ImprovementData Data, int Cost)> entries = new();
         private bool restored;
-        internal bool OwnsScope { private get; set; }
         internal void Add(ImprovementData data, int cost) => entries.Add((data, cost));
         internal void Restore()
         {
@@ -928,8 +933,7 @@ internal static class AdvancedMatchSettings
                 try { if (data != null && data.Pointer != IntPtr.Zero) data.cost = cost; }
                 catch { }
             }
-            entries.Clear();
-            if (OwnsScope) buildingCostScopeDepth = 0;
+            buildingCostScopeDepth = 0;
         }
     }
 
@@ -1212,9 +1216,21 @@ internal static class AdvancedUnitCostExecutionPatch
     }
 }
 
-[HarmonyPatch(typeof(InteractionBar), "RefreshBuildingOptions")]
+[HarmonyPatch]
 internal static class AdvancedBuildingCostUiPatch
 {
+    private static IEnumerable<MethodBase> TargetMethods()
+    {
+        yield return AccessTools.Method(typeof(InteractionBar), "RefreshBuildingOptions");
+        yield return AccessTools.Method(typeof(InteractionBar), nameof(InteractionBar.ClickedImprovement),
+            new[] { typeof(BuildCommand) });
+        yield return AccessTools.Method(typeof(InteractionBar), nameof(InteractionBar.OnUnlockableClicked),
+            new[] { typeof(ImprovementData), typeof(Tile), typeof(PlayerState) });
+        yield return AccessTools.Method(typeof(BuildingUtils), nameof(BuildingUtils.GetInfo));
+        yield return AccessTools.Method(typeof(TechUnlockButton), nameof(TechUnlockButton.SetBuildingData));
+        yield return AccessTools.Method(typeof(TechPopupContent), nameof(TechPopupContent.SetBuildingData));
+    }
+
     [HarmonyPrefix]
     private static void Apply(out AdvancedMatchSettings.BuildingCostScope? __state) =>
         __state = AdvancedMatchSettings.BeginBuildingCostScope(GameManager.GameState);
@@ -1242,12 +1258,14 @@ internal static class AdvancedBuildingCostValidationPatch
     }
 }
 
-[HarmonyPatch(typeof(BuildCommand), nameof(BuildCommand.Execute))]
+[HarmonyPatch(typeof(BuildAction), nameof(BuildAction.Execute))]
 internal static class AdvancedBuildingCostExecutionPatch
 {
     [HarmonyPrefix]
-    private static void Apply(BuildCommand __instance, GameState state, out AdvancedMatchSettings.BuildingCostScope? __state) =>
-        __state = AdvancedMatchSettings.BeginBuildingCostScope(state, __instance.Type);
+    private static void Apply(BuildAction __instance, GameState state, out AdvancedMatchSettings.BuildingCostScope? __state) =>
+        __state = __instance.DeductCost
+            ? AdvancedMatchSettings.BeginBuildingCostScope(state, __instance.Type, __instance.PlayerId)
+            : null;
 
     [HarmonyFinalizer]
     private static Exception? Restore(Exception? __exception, AdvancedMatchSettings.BuildingCostScope? __state)
