@@ -72,6 +72,7 @@ public static class Main
         SafePatch(typeof(ModdedTabListReadyPatch), logger);
         SafePatch(typeof(ModdedTabSelectionPatch), logger);
         SafePatch(typeof(ModdedListBuildPatch), logger);
+        SafePatch(typeof(ModdedPullRefreshPatch), logger);
         SafePatch(typeof(IntegratedMainThreadPumpPatch), logger);
         SafePatch(typeof(IntegratedLobbyPlayerPatch), logger);
         SafePatch(typeof(IntegratedLobbyRowStatePatch), logger);

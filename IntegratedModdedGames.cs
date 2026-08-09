@@ -342,10 +342,30 @@ internal static class IntegratedModdedGames
 
     internal static bool AllowVanillaListBuild(MultiplayerScreen screen)
     {
-        if (!selected || owner?.multiplayerScreen == null || owner.multiplayerScreen.Pointer != screen.Pointer) return true;
+        if (!OwnsModdedList(screen)) return true;
         RequestRender();
         return false;
     }
+
+    internal static bool HandlePullRefresh(MultiplayerScreen screen)
+    {
+        if (!OwnsModdedList(screen)) return true;
+        _ = RefreshAfterPullAsync();
+        return false;
+    }
+
+    private static async Task RefreshAfterPullAsync()
+    {
+        await RefreshMatchesAsync(true, true).ConfigureAwait(false);
+        await RunOnMainThreadAsync(() =>
+        {
+            owner?.multiplayerScreen?.refresher?.EndRefreshing();
+            return true;
+        }).ConfigureAwait(false);
+    }
+
+    private static bool OwnsModdedList(MultiplayerScreen screen) =>
+        selected && owner?.multiplayerScreen != null && owner.multiplayerScreen.Pointer == screen.Pointer;
 
     /// <summary>
     /// GameManager.Update is a stable Unity main-thread boundary in Polytopia
@@ -1560,6 +1580,14 @@ internal static class ModdedListBuildPatch
 {
     [HarmonyPrefix]
     private static bool KeepModdedList(MultiplayerScreen __instance) => IntegratedModdedGames.AllowVanillaListBuild(__instance);
+}
+
+[HarmonyPatch(typeof(MultiplayerScreen), "OnRefreshGames")]
+internal static class ModdedPullRefreshPatch
+{
+    [HarmonyPrefix]
+    private static bool RefreshModdedInstead(MultiplayerScreen __instance) =>
+        IntegratedModdedGames.HandlePullRefresh(__instance);
 }
 
 /// <summary>
