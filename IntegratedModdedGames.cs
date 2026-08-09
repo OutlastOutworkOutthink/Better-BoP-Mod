@@ -33,6 +33,7 @@ internal static class IntegratedModdedGames
     private const string RulesetId = "better-bop-0.5.14";
     private const int TinyDrylandTileCount = 121;
     private const int TinyDrylandSideLength = 11;
+    private const int IntegratedTurnTimeMinutes = 24 * 60;
     private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(20) };
     private static readonly SemaphoreSlim RefreshLock = new(1, 1);
     private static readonly SemaphoreSlim CommandSubmitLock = new(1, 1);
@@ -527,7 +528,7 @@ internal static class IntegratedModdedGames
             DisabledTribes = new Il2CppSystem.Collections.Generic.List<int>(),
             IsPersistent = false,
             IsSharable = false,
-            TimeLimit = 86400,
+            TimeLimit = IntegratedTurnTimeMinutes,
             ScoreLimit = 0,
             InviteLink = string.Empty,
             GameContext = new GameContext(),

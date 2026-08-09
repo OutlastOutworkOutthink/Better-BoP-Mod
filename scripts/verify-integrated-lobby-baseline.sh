@@ -23,6 +23,8 @@ reject_text() {
 }
 
 require_text 'screen.AddLobbyRow(BuildLobbyViewModel(match));' "$source_file"
+require_text 'private const int IntegratedTurnTimeMinutes = 24 * 60;' "$source_file"
+require_text 'TimeLimit = IntegratedTurnTimeMinutes,' "$source_file"
 require_text '"waiting_for_tribes" when !ownTribe.HasValue => "CHOOSE TRIBE"' "$source_file"
 require_text '"ready_to_start" when match.Role == "host"' "$source_file"
 require_text 'button.BadgeEnabled = false;' "$source_file"
