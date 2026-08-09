@@ -1,7 +1,8 @@
-# Better Battle of Polytopia Mod — Alpha 0.6.9
+# Better Battle of Polytopia Mod — Alpha 0.6.10
 
-This Alpha keeps the working Oblivion, Discord integration, and universal-peace
-behavior locked, then adds the isolated client for bot-created Modded games.
+This Alpha keeps the working Oblivion, Discord integration, universal-peace,
+advanced-settings, and Modded multiplayer behavior locked, then adds local
+what-if play from replays.
 All other earlier gameplay and experimental UI changes remain inactive.
 
 ## Oblivion
@@ -9,7 +10,7 @@ All other earlier gameplay and experimental UI changes remain inactive.
 Open **Creative**, continue to tribe/game setup, and select **Oblivion** in the
 same rule row as **Perfection**, **Domination**, and **Infinity**.
 
-Alpha 0.6.9 retains both the visible legacy setup row and UI2's later layout
+Alpha 0.6.10 retains both the visible legacy setup row and UI2's later layout
 callbacks, after Polytopia has actually created the game-mode controls.
 
 Oblivion keeps all normal Creative setup choices, but the match itself uses
@@ -151,11 +152,24 @@ immediately and bots keep their normal prices. The 100% defaults exit
 before allocating a cost scope or resolving an owner, selections are flushed to
 disk only when starting a game, and no per-frame scan is added.
 
-Alpha 0.6.9 deliberately does not patch or mutate the home screen. The attempted
-version label in Alpha 0.6.2 could still terminate the native IL2CPP process
-immediately after `StartScreen.Init()` without producing a managed exception.
-The installed version remains visible in PolyMod and `manifest.json`, and the
-BepInEx load line records it without touching Unity's home-screen lifecycle.
+## Replay pass-and-play branches
+
+Pause any vanilla or Modded replay at the position to explore. Moving a unit or
+researching a technology creates one in-memory copy of that exact state and
+continues it with Polytopia's native Pass & Play client. Turns, start-of-turn
+effects, city rewards, camera hand-offs, and the **Next Turn** control therefore
+use the game's normal local multiplayer behavior.
+
+While exploring, the replay timeline is hidden and its control becomes a
+top-left **Back** button. Pressing it discards the branch, reloads the untouched
+snapshot, pauses at the original turn and command, and restores ordinary replay
+controls. Branches never upload commands or write a hot-seat save. There is no
+polling or per-frame patch: serialization happens once on entry and once when
+restoring the replay.
+
+The title screen displays **BBoP Alpha 0.6.10** at bottom-right. It is added by a
+one-time, fail-closed hook after the Start screen has opened; no `StartScreen`
+initialization, layout, or refresh method is patched.
 
 ## Inactive archive
 
@@ -165,7 +179,7 @@ explicitly excluded from `BetterBoPMod.dll`. See
 
 ## Install
 
-Download the Alpha 0.6.9 release ZIP, extract it, and place the
+Download the Alpha 0.6.10 release ZIP, extract it, and place the
 `Better-BoP-Mod` folder directly inside Polytopia's `Mods` directory. These files
 must be together at that folder's top level:
 
@@ -181,7 +195,7 @@ converted into Oblivion games.
 The BepInEx log confirms a successful load with:
 
 ```text
-Better BoP Alpha 0.6.9 loaded: complete building prices with lean advanced settings.
+Better BoP Alpha 0.6.10 loaded: replay pass-and-play branches plus locked baselines.
 ```
 
 ## Development
