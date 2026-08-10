@@ -4,9 +4,8 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.6.9 keeps the locked gameplay baselines and removes all hooks from
-/// Polytopia's native home-screen lifecycle after Alpha 0.6.2 still caused a
-/// native IL2CPP crash immediately after StartScreen.Init().
+/// Alpha 0.6.11 keeps the locked gameplay baselines, adds local replay
+/// branches, and retains the rule that no native StartScreen method is patched.
 /// </summary>
 public static class Main
 {
@@ -22,6 +21,8 @@ public static class Main
         IntegratedModdedGames.Initialize(logger);
         UniversalPeaceRules.Logger = logger;
         AdvancedMatchSettings.Initialize(logger);
+        ReplayPassAndPlay.Initialize(logger);
+        HomeVersionLabel.Initialize(logger);
 
         SafePatch(typeof(OblivionCreativeModeListPatch), logger);
         SafePatch(typeof(OblivionClassicRenderedRowPatch), logger);
@@ -71,7 +72,9 @@ public static class Main
         SafePatch(typeof(ModdedTabListReadyPatch), logger);
         SafePatch(typeof(ModdedTabSelectionPatch), logger);
         SafePatch(typeof(ModdedListBuildPatch), logger);
+        SafePatch(typeof(ModdedPullRefreshPatch), logger);
         SafePatch(typeof(IntegratedMainThreadPumpPatch), logger);
+        SafePatch(typeof(IntegratedTribePickerLifecyclePatch), logger);
         SafePatch(typeof(IntegratedLobbyPlayerPatch), logger);
         SafePatch(typeof(IntegratedLobbyRowStatePatch), logger);
         SafePatch(typeof(IntegratedLobbyBadgePatch), logger);
@@ -120,7 +123,15 @@ public static class Main
         SafePatch(typeof(AdvancedEnemyHealthPatch), logger);
         SafePatch(typeof(AdvancedEnemySpawnHealthPatch), logger);
         SafePatch(typeof(AdvancedConvertedUnitHealthPatch), logger);
-        logger.LogMessage("Better BoP Alpha 0.6.9 loaded: complete building prices with lean advanced settings.");
+        SafePatch(typeof(ReplayPassAndPlayInputPatch), logger);
+        SafePatch(typeof(ReplayPassAndPlayCommandPatch), logger);
+        SafePatch(typeof(ReplayPassAndPlayHudPatch), logger);
+        SafePatch(typeof(ReplayPassAndPlayUiPatch), logger);
+        SafePatch(typeof(ReplayPassAndPlayReadyPatch), logger);
+        SafePatch(typeof(ReplayPassAndPlayNoSavePatch), logger);
+        SafePatch(typeof(ReplayPassAndPlayNoNetworkPatch), logger);
+        SafePatch(typeof(HomeVersionScreenOpenPatch), logger);
+        logger.LogMessage("Better BoP Alpha 0.6.11 loaded: reliable Integrated tribe locking, replay branches, and locked baselines.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)

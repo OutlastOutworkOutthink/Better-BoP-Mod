@@ -121,11 +121,10 @@ the reference assemblies, not that the patched screen executed correctly.
 - Keep the Discord link permanent and version-independent. Compatibility is
   established by `/v1/auth/exchange` from the running client; never require a
   player to recreate OAuth just because the mod version changed.
-- Discord joining provisions the server match and channel immediately. Tribe
-  selection is the confirmation: new matches go `waiting_for_tribes` →
-  `provisioning` as soon as both tribes exist, then `active` →
-  `completed|disputed`. Keep `/start` and `ready_to_start` support only as
-  recovery for older clients/rows; no player-facing Start step remains.
+- Discord joining provisions the server match and channel immediately. New
+  matches go `waiting_for_tribes` while each player locks exactly one tribe,
+  then `ready_to_start`. Only the immutable host may press Start, which moves
+  the match through `provisioning` to `active`, then `completed|disputed`.
 - Only the immutable host generates and uploads the initial game state. Before
   upload, require `CreateSessionResult.Success`, two players, non-zero map
   dimensions, and a non-empty tile array. A failed upload must retry the same
