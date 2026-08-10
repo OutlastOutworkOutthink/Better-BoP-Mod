@@ -24,13 +24,18 @@ reject_text() {
 
 require_text 'screen.AddLobbyRow(BuildLobbyViewModel(match));' "$source_file"
 require_text 'private const int IntegratedTurnTimeMinutes = 24 * 60;' "$source_file"
+require_text 'private const int TinyDrylandSideLength = 11;' "$source_file"
 require_text 'TimeLimit = IntegratedTurnTimeMinutes,' "$source_file"
+require_text 'MapSize = TinyDrylandSideLength,' "$source_file"
 require_text '"waiting_for_tribes" when !ownTribe.HasValue => "CHOOSE TRIBE"' "$source_file"
 require_text '"ready_to_start" when match.Role == "host"' "$source_file"
 require_text 'button.BadgeEnabled = false;' "$source_file"
 require_text 'LoadTribelessHeadMethod?.Invoke' "$source_file"
 require_text 'Your tribe is already locked for this game.' "$source_file"
 require_text 'StartMatchAsync(match.Id)' "$source_file"
+require_text 'pendingTribePickerMatchId = match.Id;' "$source_file"
+require_text 'IntegratedTribePickerLifecyclePatch' "$main_file"
+require_text 'SafePatch(typeof(IntegratedTribePickerLifecyclePatch), logger);' "$main_file"
 require_text 'IntegratedLobbyButtonStatePatch' "$main_file"
 require_text 'IntegratedLobbyDescriptionPatch' "$main_file"
 require_text 'SafePatch(typeof(ModdedPullRefreshPatch), logger);' "$main_file"
@@ -43,5 +48,6 @@ require_text '[HarmonyPatch(typeof(MultiplayerScreen), "OnRefreshGames")]' "$sou
 
 reject_text 'Change Your Tribe' "$source_file"
 reject_text 'Refresh Modded Games' "$source_file"
+reject_text 'NativeMapSideLength' "$source_file"
 
 echo "Vanilla-style Integrated lobby baseline verified."

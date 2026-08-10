@@ -9,14 +9,14 @@ if grep -R -E 'HarmonyPatch\(typeof\(StartScreen(_UI2)?\)' \
   exit 1
 fi
 
-grep -Fq 'DisplayText = "BBoP Alpha 0.6.10"' "$root/HomeVersionLabel.cs"
+grep -Fq 'DisplayText = "BBoP Alpha 0.6.11"' "$root/HomeVersionLabel.cs"
 grep -Fq '[HarmonyPatch(typeof(UIEvents), nameof(UIEvents.ScreenOpen))]' "$root/HomeVersionLabel.cs"
 grep -Fq 'openedScreen != UIConstants.Screens.StartScreen' "$root/HomeVersionLabel.cs"
 grep -Fq '.GetScreen(openedScreen, false)?' "$root/HomeVersionLabel.cs"
 grep -Fq 'TextAlignmentOptions.BottomRight' "$root/HomeVersionLabel.cs"
 grep -Fq 'field.raycastTarget = false;' "$root/HomeVersionLabel.cs"
-grep -Fq 'Better BoP Alpha 0.6.10 loaded' "$root/Main.cs"
-grep -Fq '"version": "0.6.10"' "$root/manifest.json"
+grep -Fq 'Better BoP Alpha 0.6.11 loaded' "$root/Main.cs"
+grep -Fq '"version": "0.6.11"' "$root/manifest.json"
 
 if grep -Fq '[HarmonyPatch(typeof(GameManager), "Update")]' "$root/HomeVersionLabel.cs"; then
   echo "The title label must not add per-frame work." >&2

@@ -12,7 +12,7 @@ namespace BetterBoPMod;
 /// </summary>
 internal static class HomeVersionLabel
 {
-    internal const string DisplayText = "BBoP Alpha 0.6.10";
+    internal const string DisplayText = "BBoP Alpha 0.6.11";
     private const string ObjectName = "BetterBoP.HomeVersion";
     private static ManualLogSource logger = null!;
     private static TextMeshProUGUI? label;
