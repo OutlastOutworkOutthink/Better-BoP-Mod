@@ -15,6 +15,7 @@ grep -Fq '.SetText("Back")' "$source_file"
 grep -Fq 'hud?.buttonBar?.RefreshNextTurnButton();' "$source_file"
 grep -Fq 'ReplayPassAndPlayNoSavePatch' "$source_file"
 grep -Fq 'ReplayPassAndPlayNoNetworkPatch' "$source_file"
+grep -Fq 'GameState gameState' "$source_file"
 
 if grep -Eq 'HarmonyPatch\(typeof\([^)]*\), "?(Update|LateUpdate|FixedUpdate)"?\)' "$source_file"; then
   echo "Replay branches must not poll per frame." >&2

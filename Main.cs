@@ -4,7 +4,7 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.6.11 keeps the locked gameplay baselines, adds local replay
+/// Alpha 0.6.12 keeps the locked gameplay baselines, adds local replay
 /// branches, and retains the rule that no native StartScreen method is patched.
 /// </summary>
 public static class Main
@@ -74,6 +74,7 @@ public static class Main
         SafePatch(typeof(ModdedListBuildPatch), logger);
         SafePatch(typeof(ModdedPullRefreshPatch), logger);
         SafePatch(typeof(IntegratedMainThreadPumpPatch), logger);
+        SafePatch(typeof(IntegratedSyntheticPlayerDataPatch), logger);
         SafePatch(typeof(IntegratedTribePickerLifecyclePatch), logger);
         SafePatch(typeof(IntegratedLobbyPlayerPatch), logger);
         SafePatch(typeof(IntegratedLobbyRowStatePatch), logger);
@@ -120,6 +121,8 @@ public static class Main
         SafePatch(typeof(AdvancedBuildingCostUiPatch), logger);
         SafePatch(typeof(AdvancedBuildingCostValidationPatch), logger);
         SafePatch(typeof(AdvancedBuildingCostExecutionPatch), logger);
+        SafePatch(typeof(AdvancedBuildingCostPopupPatch), logger);
+        SafePatch(typeof(AdvancedSettingsMainModeResetPatch), logger);
         SafePatch(typeof(AdvancedEnemyHealthPatch), logger);
         SafePatch(typeof(AdvancedEnemySpawnHealthPatch), logger);
         SafePatch(typeof(AdvancedConvertedUnitHealthPatch), logger);
@@ -131,7 +134,8 @@ public static class Main
         SafePatch(typeof(ReplayPassAndPlayNoSavePatch), logger);
         SafePatch(typeof(ReplayPassAndPlayNoNetworkPatch), logger);
         SafePatch(typeof(HomeVersionScreenOpenPatch), logger);
-        logger.LogMessage("Better BoP Alpha 0.6.11 loaded: reliable Integrated tribe locking, replay branches, and locked baselines.");
+        SafePatch(typeof(HomeVersionShowScreenPatch), logger);
+        logger.LogMessage("Better BoP Alpha 0.6.12 loaded: native Integrated tribe picking, replay branches, and scaled UI prices.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)

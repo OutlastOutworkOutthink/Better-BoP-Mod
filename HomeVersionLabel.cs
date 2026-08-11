@@ -12,7 +12,7 @@ namespace BetterBoPMod;
 /// </summary>
 internal static class HomeVersionLabel
 {
-    internal const string DisplayText = "BBoP Alpha 0.6.11";
+    internal const string DisplayText = "BBoP Alpha 0.6.12";
     private const string ObjectName = "BetterBoP.HomeVersion";
     private static ManualLogSource logger = null!;
     private static TextMeshProUGUI? label;
@@ -28,7 +28,7 @@ internal static class HomeVersionLabel
         try
         {
             StartScreen_UI2? screen = UIManager.Instance
-                .GetScreen(openedScreen, false)?
+                .GetScreen(openedScreen, true)?
                 .TryCast<StartScreen_UI2>();
             TextField_UI2? template = screen?.aboutButton?.titleTextField ??
                                       screen?.settingsButton?.titleTextField;
@@ -79,5 +79,13 @@ internal static class HomeVersionScreenOpenPatch
 {
     [HarmonyPostfix]
     private static void AddVersionAfterOpen(UIConstants.Screens screen) =>
+        HomeVersionLabel.TryAdd(screen);
+}
+
+[HarmonyPatch(typeof(UIManager), nameof(UIManager.ShowScreen))]
+internal static class HomeVersionShowScreenPatch
+{
+    [HarmonyPostfix]
+    private static void AddVersionAfterShow(UIConstants.Screens screen) =>
         HomeVersionLabel.TryAdd(screen);
 }

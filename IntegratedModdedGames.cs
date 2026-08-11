@@ -569,8 +569,27 @@ internal static class IntegratedModdedGames
             InvitationState = PlayerInvitationState.Accepted,
             SelectedTribe = tribe ?? (int)TribeType.None,
             SelectedTribeSkin = (int)SkinType.Default,
+            // A zero-length payload marks this as one of our synthetic seats.
+            // PlayerDataUtils is bypassed for these rows below, avoiding stock
+            // avatar deserialization against an intentionally absent payload.
             AvatarStateData = new Il2CppStructArray<byte>(0),
         };
+    }
+
+    internal static bool TryGetIntegratedPlayerData(ParticipatorViewModel participator, out PlayerData data)
+    {
+        data = null!;
+        if (participator?.AvatarStateData == null || participator.AvatarStateData.Length != 0) return false;
+        string accountId = participator.UserId.ToString();
+        IntegratedMatch? match = matches.FirstOrDefault(item =>
+            string.Equals(item.HostAccountId, accountId, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(item.AwayAccountId, accountId, StringComparison.OrdinalIgnoreCase));
+        if (match == null) return false;
+        int? tribe = string.Equals(match.HostAccountId, accountId, StringComparison.OrdinalIgnoreCase)
+            ? match.HostTribe
+            : match.AwayTribe;
+        data = BuildPlayer(accountId, participator.Name, tribe);
+        return true;
     }
 
     private static void OpenTribePicker(string matchId)
@@ -586,12 +605,14 @@ internal static class IntegratedModdedGames
 
             pendingTribePickerMatchId = match.Id;
             GameManager.PreliminaryGameSettings = BuildPickerSettings(match);
-            ConfigureTribePicker(match);
             UIManager.Instance.ShowScreen(UIConstants.Screens.TribePicker, false, null);
             // Polytopia rebuilds parts of this screen during Show/OnEnable.
             // Apply on both sides of that lifecycle; the dedicated lifecycle
             // patch below also restores the callback after deferred rebuilds.
-            ConfigureTribePicker(match);
+            TribeSelectorScreen? picker = UIManager.Instance
+                .GetScreen(UIConstants.Screens.TribePicker, true)?
+                .TryCast<TribeSelectorScreen>();
+            if (picker != null) ConfigureTribePicker(match, picker);
             logger.LogInfo($"Opened the native tribe picker for Integrated G{match.BotGameId}.");
         }
         catch (Exception exception)
@@ -734,7 +755,7 @@ internal static class IntegratedModdedGames
         int? opponentTribe = match.Role == "host" ? match.AwayTribe : match.HostTribe;
         string? label = match.Status switch
         {
-            "waiting_for_tribes" when !ownTribe.HasValue => "CHOOSE TRIBE",
+            "waiting_for_tribes" when !ownTribe.HasValue => "PICK TRIBE",
             "ready_to_start" when match.Role == "host" && ownTribe.HasValue && opponentTribe.HasValue => "START GAME",
             "provisioning" when match.Role == "host" => "CONTINUE SETUP",
             "active" => active && activeMatchId == match.Id ? "GAME OPEN" : "OPEN GAME",
@@ -1612,6 +1633,17 @@ internal static class IntegratedMainThreadPumpPatch
 {
     [HarmonyPostfix]
     private static void DrainIntegratedWork() => IntegratedModdedGames.PumpMainThread();
+}
+
+[HarmonyPatch(typeof(PlayerDataUtils), nameof(PlayerDataUtils.GetPlayerData),
+    new[] { typeof(ParticipatorViewModel), typeof(bool) })]
+internal static class IntegratedSyntheticPlayerDataPatch
+{
+    [HarmonyPrefix]
+    private static bool UseIntegratedSeat(
+        ParticipatorViewModel participator,
+        ref PlayerData __result
+    ) => !IntegratedModdedGames.TryGetIntegratedPlayerData(participator, out __result);
 }
 
 [HarmonyPatch]

@@ -200,9 +200,9 @@ internal static class ReplayPassAndPlay
 internal static class ReplayPassAndPlayInputPatch
 {
     [HarmonyPostfix]
-    private static void AllowReplayBranch(CommandBase command, GameState state, ref bool __result)
+    private static void AllowReplayBranch(CommandBase command, GameState gameState, ref bool __result)
     {
-        if (!__result) __result = ReplayPassAndPlay.CanReceive(command, state);
+        if (!__result) __result = ReplayPassAndPlay.CanReceive(command, gameState);
     }
 }
 
