@@ -121,7 +121,7 @@ public static class Main
         SafePatch(typeof(AdvancedBuildingCostUiPatch), logger);
         SafePatch(typeof(AdvancedBuildingCostValidationPatch), logger);
         SafePatch(typeof(AdvancedBuildingCostExecutionPatch), logger);
-        SafePatch(typeof(AdvancedSettingsMainModeResetPatch), logger);
+        SafePatch(typeof(AdvancedSettingsMainModeSelectionPatch), logger);
         SafePatch(typeof(AdvancedEnemyHealthPatch), logger);
         SafePatch(typeof(AdvancedEnemySpawnHealthPatch), logger);
         SafePatch(typeof(AdvancedConvertedUnitHealthPatch), logger);

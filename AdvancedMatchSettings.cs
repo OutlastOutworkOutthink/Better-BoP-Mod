@@ -48,12 +48,19 @@ internal static class AdvancedMatchSettings
     private static int discardedControlSerial;
     private static DateTime pendingSinceUtc;
     private static bool pending;
+    private static bool collapseNextSetup;
 
     internal static void Initialize(ManualLogSource logSource) => logger = logSource;
 
     internal static bool IsSupportedSetup() => OblivionMode.IsCreativeSetup();
 
-    internal static void ResetToDefaults()
+    internal static void BeginTopLevelSetup()
+    {
+        collapseNextSetup = true;
+        ResetToDefaults(true);
+    }
+
+    internal static void ResetToDefaults(bool hideToggle = false)
     {
         SaveIndex(UnitSelectionKey, DefaultIndex);
         SaveIndex(BuildingSelectionKey, DefaultIndex);
@@ -65,8 +72,12 @@ internal static class AdvancedMatchSettings
         {
             controls.Expanded = false;
             RefreshControls(controls);
-            SetRowsVisible(controls, false);
-            SetToggleState(controls);
+            if (hideToggle) SetAllVisible(controls, false);
+            else
+            {
+                SetRowsVisible(controls, false);
+                SetToggleState(controls);
+            }
         }
         PlayerPrefs.Save();
     }
@@ -130,9 +141,15 @@ internal static class AdvancedMatchSettings
         GameSetupScreenView? view = screen.view;
         if (view == null) return false;
 
+        if (collapseNextSetup)
+        {
+            screen.advancedSettingsExpanded = false;
+            collapseNextSetup = false;
+        }
+
         if (!IsSupportedSetup())
         {
-            ResetToDefaults();
+            screen.advancedSettingsExpanded = false;
             Controls? existing = ControlsFor(view);
             if (existing != null) SetAllVisible(existing, false);
             return false;
@@ -1291,17 +1308,18 @@ internal static class AdvancedBuildingCostExecutionPatch
 }
 
 [HarmonyPatch]
-internal static class AdvancedSettingsMainModeResetPatch
+internal static class AdvancedSettingsMainModeSelectionPatch
 {
     private static IEnumerable<MethodBase> TargetMethods()
     {
         yield return AccessTools.Method(typeof(GameModeScreen), nameof(GameModeScreen.OnGameMode));
         yield return AccessTools.Method(typeof(GameModeScreen_UI2), nameof(GameModeScreen_UI2.OnPerfection));
         yield return AccessTools.Method(typeof(GameModeScreen_UI2), nameof(GameModeScreen_UI2.OnDomination));
+        yield return AccessTools.Method(typeof(GameModeScreen_UI2), nameof(GameModeScreen_UI2.OnCustom));
     }
 
     [HarmonyPrefix]
-    private static void ResetOutsideCreative() => AdvancedMatchSettings.ResetToDefaults();
+    private static void BeginSetup() => AdvancedMatchSettings.BeginTopLevelSetup();
 }
 
 [HarmonyPatch(typeof(UnitDataExtensions), nameof(UnitDataExtensions.GetMaxHealth))]

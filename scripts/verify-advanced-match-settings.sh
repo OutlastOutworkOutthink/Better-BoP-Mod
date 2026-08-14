@@ -66,6 +66,13 @@ grep -Fq 'view.scroller?.UpdateContentBounds();' "$source_file"
 grep -Fq 'screen.advancedSettingsExpanded = controls.Expanded;' "$source_file"
 grep -Fq 'screen.UpdateLayout();' "$source_file"
 grep -Fq 'OblivionMode.IsCreativeSetup()' "$source_file"
+grep -Fq 'internal static void BeginTopLevelSetup()' "$source_file"
+grep -Fq 'collapseNextSetup = true;' "$source_file"
+grep -Fq 'ResetToDefaults(true);' "$source_file"
+grep -Fq 'screen.advancedSettingsExpanded = false;' "$source_file"
+grep -Fq 'nameof(GameModeScreen_UI2.OnCustom)' "$source_file"
+grep -Fq 'if (!controls.Expanded) ResetToDefaults();' "$source_file"
+grep -Fq 'SafePatch(typeof(AdvancedSettingsMainModeSelectionPatch), logger);' "$root/Main.cs"
 grep -Fq 'ResetToDefaults()' "$source_file"
 grep -Fq 'AdvancedSettingsSingleplayerStartPatch' "$source_file"
 grep -Fq 'if (!pending) activeRules = RuleSet.Default;' "$source_file"
@@ -175,6 +182,12 @@ fi
 save_index_body="$(sed -n '/private static void SaveIndex/,/^    }/p' "$source_file")"
 if grep -Fq 'PlayerPrefs.Save()' <<<"$save_index_body"; then
   echo "Percentage changes must flush once at game start, not on each interaction." >&2
+  exit 1
+fi
+
+ensure_body="$(sed -n '/internal static bool EnsureControls/,/^    }/p' "$source_file")"
+if grep -Fq 'ResetToDefaults' <<<"$ensure_body"; then
+  echo "Non-Creative layout passes must only hide controls; they must not repeatedly flush defaults." >&2
   exit 1
 fi
 
