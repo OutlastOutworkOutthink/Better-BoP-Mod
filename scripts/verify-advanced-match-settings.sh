@@ -75,8 +75,8 @@ grep -Fq 'AdvancedUnitCostExecutionPatch' "$source_file"
 grep -Fq 'AdvancedBuildingCostUiPatch' "$source_file"
 grep -Fq 'AdvancedBuildingCostValidationPatch' "$source_file"
 grep -Fq 'AdvancedBuildingCostExecutionPatch' "$source_file"
-grep -Fq 'AdvancedBuildingCostPopupPatch' "$source_file"
-grep -Fq 'SyncPopupCost' "$source_file"
+grep -Fq '"AddImprovementButtons", new[] { typeof(Tile) }' "$source_file"
+grep -Fq 'SafePatch(typeof(AdvancedBuildingCostUiPatch), logger);' "$root/Main.cs"
 grep -Fq 'GameState gameState' "$source_file"
 grep -Fq 'BeginUnitCostScope' "$source_file"
 grep -Fq 'BeginBuildingCostScope' "$source_file"
@@ -97,6 +97,16 @@ grep -Fq 'activeRules.EnemyHealthPercent == 100' "$source_file"
 grep -Fq 'nameof(UnitDataExtensions.GetMaxHealth)' "$source_file"
 grep -Fq 'AdvancedConvertedUnitHealthPatch' "$source_file"
 grep -Fq 'GameRulesKeyPrefix' "$source_file"
+
+if grep -Eq 'AdvancedBuildingCostPopupPatch|SyncPopupCost' "$source_file"; then
+  echo "Building prices must be rendered from the same scoped data as action buttons, not repaired after copying." >&2
+  exit 1
+fi
+
+if grep -Eq 'AdvancedBuildingCostPopupPatch|SyncPopupCost' "$root/Main.cs"; then
+  echo "Obsolete building-price popup repair patches must not be registered." >&2
+  exit 1
+fi
 
 test $(( (2 * 500 + 99) / 100 )) -eq 10
 test $(( (8 * 500 + 99) / 100 )) -eq 40

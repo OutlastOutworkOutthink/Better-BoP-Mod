@@ -278,15 +278,6 @@ internal static class AdvancedMatchSettings
         controls.Toggle.RunLayout();
     }
 
-    internal static void SyncPopupCost(InteractionBar bar, ImprovementData? improvement)
-    {
-        if (bar?.iconPopupData == null || improvement == null ||
-            activeRules.BuildingCostPercent == 100) return;
-        // This runs before AdvancedBuildingCostUiPatch's finalizer, while the
-        // shared improvement data still contains the scaled price.
-        bar.iconPopupData.cost = improvement.cost;
-    }
-
     internal static UnitCostScope? BeginUnitCostScope(GameState? state, UnitData.Type? only = null)
     {
         if (activeRules.UnitCostPercent == 100 || state?.GameLogicData == null || !IsRulesOwnerTurn(state))
@@ -1244,6 +1235,7 @@ internal static class AdvancedBuildingCostUiPatch
 {
     private static IEnumerable<MethodBase> TargetMethods()
     {
+        yield return AccessTools.Method(typeof(InteractionBar), "AddImprovementButtons", new[] { typeof(Tile) });
         yield return AccessTools.Method(typeof(InteractionBar), "RefreshBuildingOptions");
         yield return AccessTools.Method(typeof(InteractionBar), nameof(InteractionBar.ClickedImprovement),
             new[] { typeof(BuildCommand) });
@@ -1295,28 +1287,6 @@ internal static class AdvancedBuildingCostExecutionPatch
     {
         __state?.Restore();
         return __exception;
-    }
-}
-
-[HarmonyPatch]
-internal static class AdvancedBuildingCostPopupPatch
-{
-    private static IEnumerable<MethodBase> TargetMethods()
-    {
-        yield return AccessTools.Method(typeof(InteractionBar), nameof(InteractionBar.ClickedImprovement),
-            new[] { typeof(BuildCommand) });
-        yield return AccessTools.Method(typeof(InteractionBar), nameof(InteractionBar.OnUnlockableClicked),
-            new[] { typeof(ImprovementData), typeof(Tile), typeof(PlayerState) });
-    }
-
-    [HarmonyPostfix]
-    [HarmonyPriority(Priority.Last)]
-    private static void ShowScaledPrice(InteractionBar __instance, object __0)
-    {
-        ImprovementData? data = __0 as ImprovementData;
-        if (data == null && __0 is BuildCommand command)
-            data = GameManager.GameState?.GameLogicData?.GetImprovementData(command.Type);
-        AdvancedMatchSettings.SyncPopupCost(__instance, data);
     }
 }
 
