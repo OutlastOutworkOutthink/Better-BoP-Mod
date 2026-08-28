@@ -178,9 +178,9 @@ controls. Branches never upload commands or write a hot-seat save. There is no
 polling or per-frame patch: serialization happens once on entry and once when
 restoring the replay.
 
-The title screen displays **BBoP Alpha 0.6.13** at bottom-right. It is added by a
-one-time, fail-closed hook after the Start screen has opened; no `StartScreen`
-initialization, layout, or refresh method is patched.
+The title screen displays **BBoP Alpha 0.6.13** at bottom-right. Generic loading
+and screen-show signals schedule a bounded post-layout retry on the existing
+main-thread pump; no `StartScreen` lifecycle method is patched.
 
 ## Inactive archive
 

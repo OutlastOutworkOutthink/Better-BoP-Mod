@@ -133,9 +133,11 @@ the reference assemblies, not that the patched screen executed correctly.
   `MultiplayerScreen.AddLobbyRow`. This reuses Polytopia's blue row, LobbyPopup,
   map/mode/timer/more-info controls, and player slots. Intercept lobby start,
   invite, and leave actions so synthetic lobbies never call Midjiwan's backend.
-- Open the stock `TribeSelectorScreen` for the local player slot, submit its
-  selected tribe to Better BoP, and automatically load the initial state for
-  the guest after the host's map upload makes the game active.
+- Current desktop builds route `TribePicker` to `TribePickerScreen_UI2`, not the
+  retired `TribeSelectorScreen`. Open the stock route, intercept UI2's confirmed
+  `selectedTribe.type`, suppress its synthetic vanilla-lobby mutation, post the
+  choice to Better BoP, and pop back to Modded only after success. Clear pending
+  context from UI2 `OnHide`; leave a failed submission retryable.
 - Add Modded by extending `MultiplayerSelectionScreen.ScreenSelectionList` and
   render rows through the stock `MultiplayerScreen`. Do not alter the Ongoing or
   Replays models, and restore the stock New Game button when leaving Modded.
@@ -260,10 +262,11 @@ the reference assemblies, not that the patched screen executed correctly.
   that type. Restricting it to network types silently removes both the stock
   advanced toggle and all three rows from the Creative setup screen.
 - Do not patch `StartScreen` or `StartScreen_UI2` to add a home version label.
-  Creating a TMP object crashed Alpha 0.6.1, and even changing the existing
-  About label after layout still caused Alpha 0.6.2 to terminate immediately
-  after `StartScreen.Init()` with no managed exception. Alpha 0.6.3 removes the
-  complete hook; keep the version in `manifest.json` and the BepInEx load line.
+  Creating a TMP object crashed Alpha 0.6.1, and changing the existing About
+  label after layout crashed Alpha 0.6.2. Use generic `UIEvents`/`UIManager`
+  signals to schedule a bounded post-layout clone of an existing native text
+  field on the already-present main-thread pump. Disable the clone's localizer,
+  validate that it is active, then stop polling after success.
 - Lobby readiness must be calculated from both nullable tribe selections, not
   merely the server status or two accepted Discord seats. Write the result to
   `LobbyPopup.Description` after `SetData`/`RefreshPopup` so the native
@@ -273,6 +276,5 @@ the reference assemblies, not that the patched screen executed correctly.
 
 - Keep all releases on **Alpha 0.6.X** until the project owner explicitly asks
   to move to **Alpha 0.7**. Increment only the patch component after 0.6.0.
-- Every release must update `manifest.json`, `Main.cs`, `README.md`, and the
-  release ZIP/tag to the exact same version. Do not restore a home-screen
-  version label until a native-safe hook has been proven on the shipped build.
+- Every release must update `manifest.json`, `Main.cs`, `HomeVersionLabel.cs`,
+  `README.md`, and the release ZIP/tag to the exact same version.

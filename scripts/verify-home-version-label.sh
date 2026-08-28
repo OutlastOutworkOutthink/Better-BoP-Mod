@@ -11,10 +11,16 @@ fi
 
 grep -Fq 'DisplayText = "BBoP Alpha 0.6.13"' "$root/HomeVersionLabel.cs"
 grep -Fq '[HarmonyPatch(typeof(UIEvents), nameof(UIEvents.ScreenOpen))]' "$root/HomeVersionLabel.cs"
-grep -Fq 'openedScreen != UIConstants.Screens.StartScreen' "$root/HomeVersionLabel.cs"
-grep -Fq '.GetScreen(openedScreen, true)?' "$root/HomeVersionLabel.cs"
-grep -Fq '[HarmonyPatch(typeof(UIManager), nameof(UIManager.ShowScreen))]' "$root/HomeVersionLabel.cs"
+grep -Fq '[HarmonyPatch(typeof(UIEvents), nameof(UIEvents.LoadingScreenHidden))]' "$root/HomeVersionLabel.cs"
+grep -Fq 'new[] { typeof(UIConstants.Screens), typeof(bool), typeof(UIDeepLinkData) })]' "$root/HomeVersionLabel.cs"
+grep -Fq 'IScreen __result' "$root/HomeVersionLabel.cs"
+grep -Fq 'UIManager.Instance.GetCurrentScreen()' "$root/HomeVersionLabel.cs"
+grep -Fq 'private const int MaxAttempts = 240;' "$root/HomeVersionLabel.cs"
+grep -Fq 'HomeVersionLabel.Tick();' "$root/IntegratedModdedGames.cs"
+grep -Fq 'SafePatch(typeof(HomeVersionLoadingCompletePatch), logger);' "$root/Main.cs"
 grep -Fq 'SafePatch(typeof(HomeVersionShowScreenPatch), logger);' "$root/Main.cs"
+grep -Fq 'localizer.enabled = false;' "$root/HomeVersionLabel.cs"
+grep -Fq 'textField?.SetText(DisplayText);' "$root/HomeVersionLabel.cs"
 grep -Fq 'TextAlignmentOptions.BottomRight' "$root/HomeVersionLabel.cs"
 grep -Fq 'field.raycastTarget = false;' "$root/HomeVersionLabel.cs"
 grep -Fq 'Better BoP Alpha 0.6.13 loaded' "$root/Main.cs"
@@ -25,4 +31,9 @@ if grep -Fq '[HarmonyPatch(typeof(GameManager), "Update")]' "$root/HomeVersionLa
   exit 1
 fi
 
-echo "Late, one-time home version label guards passed."
+if grep -Fq 'Loaded Better BoP patch:' "$root/Main.cs"; then
+  echo "Successful patch registration must remain silent." >&2
+  exit 1
+fi
+
+echo "Deferred, bounded home version label guards passed."
