@@ -57,10 +57,11 @@ internal static class AdvancedMatchSettings
     internal static void BeginTopLevelSetup()
     {
         collapseNextSetup = true;
-        ResetToDefaults(true);
+        ClearSetupCache();
+        ResetToDefaults();
     }
 
-    internal static void ResetToDefaults(bool hideToggle = false)
+    internal static void ResetToDefaults()
     {
         SaveIndex(UnitSelectionKey, DefaultIndex);
         SaveIndex(BuildingSelectionKey, DefaultIndex);
@@ -68,15 +69,23 @@ internal static class AdvancedMatchSettings
         pendingRules = activeRules = RuleSet.Default;
         pending = false;
         hasActiveRulesOwner = false;
-        foreach (Controls controls in ControlsByParent.Values)
+        foreach ((IntPtr parent, Controls controls) in ControlsByParent.ToArray())
         {
-            controls.Expanded = false;
-            RefreshControls(controls);
-            if (hideToggle) SetAllVisible(controls, false);
-            else
+            if (!controls.IsAlive)
             {
+                ControlsByParent.Remove(parent);
+                continue;
+            }
+            try
+            {
+                controls.Expanded = false;
+                RefreshControls(controls);
                 SetRowsVisible(controls, false);
                 SetToggleState(controls);
+            }
+            catch
+            {
+                ControlsByParent.Remove(parent);
             }
         }
         PlayerPrefs.Save();
@@ -496,7 +505,14 @@ internal static class AdvancedMatchSettings
             wasInitiatedByClick = true;
     }
 
-    internal static void ClearSetupLists() => SetupListPointers.Clear();
+    internal static void ClearSetupCache()
+    {
+        foreach (Controls controls in ControlsByParent.Values)
+            try { if (controls.IsAlive) SetAllVisible(controls, false); }
+            catch { }
+        ControlsByParent.Clear();
+        SetupListPointers.Clear();
+    }
 
     private static Controls? ControlsFor(GameSetupScreenView? view)
     {
@@ -1115,7 +1131,7 @@ internal static class AdvancedSettingsLayoutPatch
 internal static class AdvancedSettingsOnHidePatch
 {
     [HarmonyPostfix]
-    private static void ForgetSetupLists() => AdvancedMatchSettings.ClearSetupLists();
+    private static void ForgetSetupControls() => AdvancedMatchSettings.ClearSetupCache();
 }
 
 [HarmonyPatch(typeof(GameSetupScreenView), nameof(GameSetupScreenView.RunLayout))]
