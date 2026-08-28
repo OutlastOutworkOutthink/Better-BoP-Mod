@@ -131,7 +131,6 @@ public static class Main
         SafePatch(typeof(ReplayPassAndPlayMoveIntentPatch), logger);
         SafePatch(typeof(ReplayPassAndPlayTechStatePatch), logger);
         SafePatch(typeof(ReplayPassAndPlayTechIntentPatch), logger);
-        SafePatch(typeof(ReplayPassAndPlayResearchFallbackPatch), logger);
         SafePatch(typeof(ReplayPassAndPlayInputPatch), logger);
         SafePatch(typeof(ReplayPassAndPlayCommandPatch), logger);
         SafePatch(typeof(ReplayPassAndPlayHudPatch), logger);

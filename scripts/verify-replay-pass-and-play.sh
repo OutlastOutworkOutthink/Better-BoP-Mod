@@ -15,33 +15,36 @@ grep -Fq 'GameManager.Client?.clientType != ClientBase.ClientType.PassAndPlay' "
 grep -Fq 'CaptureSnapshot(client)' "$source_file"
 grep -Fq 'DecodeSnapshot(snapshot) as ReplayClient' "$source_file"
 grep -Fq 'GameManager.Instance.SetReplayClient(replay);' "$source_file"
-grep -Fq 'ClientInteraction.SelectTileInternal' "$source_file"
+grep -Fq 'nameof(ClientInteraction.SelectTile), new[] { typeof(Tile) }' "$source_file"
 grep -Fq 'ReplayPassAndPlayMoveIntentPatch' "$source_file"
 grep -Fq 'ReplayPassAndPlayTechIntentPatch' "$source_file"
-grep -Fq 'ReplayPassAndPlayResearchFallbackPatch' "$source_file"
 grep -Fq 'UnitState replayUnit = unit.UnitState;' "$source_file"
-grep -Fq 'MoveFromReplay(replayUnit, tile.Coordinates)' "$source_file"
+grep -Fq 'MoveFromReplay(replayUnit, __0.Coordinates)' "$source_file"
 grep -Fq 'state.TryGetUnit(replayUnit.id, out UnitState branchUnit)' "$source_file"
 grep -Fq 'MoveCommand command = new(state.CurrentPlayer, branchUnit, destination);' "$source_file"
 grep -Fq 'state.TryGetUnit(move.UnitId, out UnitState unit)' "$source_file"
 grep -Fq 'mapped = new MoveCommand(state.CurrentPlayer, unit, move.To);' "$source_file"
 grep -Fq 'mapped = new ResearchCommand(state.CurrentPlayer, research.Type);' "$source_file"
-grep -Fq 'TryBeginFromInput("tech-click")' "$source_file"
 grep -Fq 'ResearchCommand intent = new(state.CurrentPlayer, __instance.TechData.type);' "$source_file"
 grep -Fq 'intent.IsValid(state)' "$source_file"
+grep -Fq 'TryBeginFromInput("tech-click")' "$source_file"
 grep -Fq '__instance.RefreshState(false);' "$source_file"
 grep -Fq 'Replay snapshot did not preserve the selected position.' "$source_file"
+grep -Fq 'timeline?.Pause();' "$source_file"
+grep -Fq 'timeline?.isSimulating == true' "$source_file"
+grep -Fq 'client.ActionManager.IsSimulating' "$source_file"
+grep -Fq 'private static void AllowReplayBranch(CommandBase __0, GameState __1, ref bool __result)' "$source_file"
+grep -Fq 'private static bool RouteBranchCommand(ClientBase __instance, CommandBase __0)' "$source_file"
 grep -Fq 'timeline.gameObject.SetActive(false);' "$source_file"
 grep -Fq '.SetText("Back")' "$source_file"
 grep -Fq 'hud?.buttonBar?.RefreshNextTurnButton();' "$source_file"
 grep -Fq 'ReplayPassAndPlayNoSavePatch' "$source_file"
-grep -Fq 'GameState gameState' "$source_file"
+grep -Fq 'GameState __1' "$source_file"
 
 for patch in \
   ReplayPassAndPlayMoveIntentPatch \
   ReplayPassAndPlayTechStatePatch \
   ReplayPassAndPlayTechIntentPatch \
-  ReplayPassAndPlayResearchFallbackPatch \
   ReplayPassAndPlayInputPatch \
   ReplayPassAndPlayCommandPatch \
   ReplayPassAndPlayHudPatch \
@@ -61,6 +64,15 @@ if grep -Fq 'GameManager.Instance.client = branch;' "$source_file"; then
   echo "Replay branches must use Polytopia's temporary local-session slot." >&2
   exit 1
 fi
+
+if grep -Fq '!client.ActionManager.IsProcessing' "$source_file"; then
+  echo "Paused replay recap processing must not block pass-and-play branching." >&2
+  exit 1
+fi
+
+fake_line="$(grep -nF 'GameManager.Instance.fakeSession = branch;' "$source_file" | head -n1 | cut -d: -f1)"
+turn_line="$(grep -nF 'branch.SetNewLocalPlayerTurnForPassAndPlay(player);' "$source_file" | head -n1 | cut -d: -f1)"
+test "$fake_line" -lt "$turn_line"
 
 if grep -Eq 'HarmonyPatch\(typeof\([^)]*\), "?(Update|LateUpdate|FixedUpdate)"?\)' "$source_file"; then
   echo "Replay branches must not poll per frame." >&2
