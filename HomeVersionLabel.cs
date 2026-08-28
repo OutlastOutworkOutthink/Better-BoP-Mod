@@ -13,7 +13,7 @@ namespace BetterBoPMod;
 /// </summary>
 internal static class HomeVersionLabel
 {
-    internal const string DisplayText = "BBoP Alpha 0.6.13";
+    internal const string DisplayText = "BBoP Alpha 0.6.14";
     private const string ObjectName = "BetterBoP.HomeVersion";
     private const int RetryDelayFrames = 4;
     private const int MaxAttempts = 240;
@@ -37,7 +37,12 @@ internal static class HomeVersionLabel
         StartScreen_UI2? liveScreen = null
     )
     {
-        if (screen != UIConstants.Screens.StartScreen) return;
+        if (screen != UIConstants.Screens.StartScreen)
+        {
+            if (label != null && label.gameObject != null)
+                label.gameObject.SetActive(false);
+            return;
+        }
         candidate = liveScreen;
         delayFrames = RetryDelayFrames;
         attemptsRemaining = MaxAttempts;
@@ -96,6 +101,7 @@ internal static class HomeVersionLabel
         if (label != null && label.gameObject != null && candidate == screen)
         {
             label.text = DisplayText;
+            label.gameObject.SetActive(true);
             return true;
         }
 
@@ -105,9 +111,11 @@ internal static class HomeVersionLabel
                                   screen.settingsButton?.titleTextField;
         if (template?.gameObject == null) return false;
 
-        Transform? existing = screen.rectTransform.Find(ObjectName);
+        RectTransform parent = screen.rectTransform.GetComponentInParent<Canvas>()?
+            .rootCanvas?.GetComponent<RectTransform>() ?? screen.rectTransform;
+        Transform? existing = parent.Find(ObjectName);
         GameObject clone = existing?.gameObject ??
-            UnityEngine.Object.Instantiate(template.gameObject, screen.rectTransform);
+            UnityEngine.Object.Instantiate(template.gameObject, parent);
         clone.name = ObjectName;
         TMPLocalizer? localizer = clone.GetComponent<TMPLocalizer>();
         if (localizer != null) localizer.enabled = false;

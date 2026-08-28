@@ -4,7 +4,7 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.6.13 keeps the locked gameplay baselines, adds local replay
+/// Alpha 0.6.14 keeps the locked gameplay baselines, adds local replay
 /// branches, and retains the rule that no native StartScreen method is patched.
 /// </summary>
 public static class Main
@@ -139,7 +139,7 @@ public static class Main
         SafePatch(typeof(HomeVersionScreenOpenPatch), logger);
         SafePatch(typeof(HomeVersionLoadingCompletePatch), logger);
         SafePatch(typeof(HomeVersionShowScreenPatch), logger);
-        logger.LogMessage("Better BoP Alpha 0.6.13 loaded: native Integrated tribe picking, replay branches, and scaled action prices.");
+        logger.LogMessage("Better BoP Alpha 0.6.14 loaded: native Integrated tribe picking, replay branches, and scaled action prices.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)

@@ -1,4 +1,4 @@
-# Better Battle of Polytopia Mod — Alpha 0.6.13
+# Better Battle of Polytopia Mod — Alpha 0.6.14
 
 This Alpha keeps the working Oblivion, Discord integration, universal-peace,
 advanced-settings, and Modded multiplayer behavior locked, then adds local
@@ -10,7 +10,7 @@ All other earlier gameplay and experimental UI changes remain inactive.
 Open **Creative**, continue to tribe/game setup, and select **Oblivion** in the
 same rule row as **Perfection**, **Domination**, and **Infinity**.
 
-Alpha 0.6.13 retains both the visible legacy setup row and UI2's later layout
+Alpha 0.6.14 retains both the visible legacy setup row and UI2's later layout
 callbacks, after Polytopia has actually created the game-mode controls.
 
 Oblivion keeps all normal Creative setup choices, but the match itself uses
@@ -178,7 +178,7 @@ controls. Branches never upload commands or write a hot-seat save. There is no
 polling or per-frame patch: serialization happens once on entry and once when
 restoring the replay.
 
-The title screen displays **BBoP Alpha 0.6.13** at bottom-right. Generic loading
+The title screen displays **BBoP Alpha 0.6.14** at bottom-right. Generic loading
 and screen-show signals schedule a bounded post-layout retry on the existing
 main-thread pump; no `StartScreen` lifecycle method is patched.
 
@@ -190,7 +190,7 @@ explicitly excluded from `BetterBoPMod.dll`. See
 
 ## Install
 
-Download the Alpha 0.6.13 release ZIP, extract it, and place the
+Download the Alpha 0.6.14 release ZIP, extract it, and place the
 `Better-BoP-Mod` folder directly inside Polytopia's `Mods` directory. These files
 must be together at that folder's top level:
 
@@ -206,7 +206,7 @@ converted into Oblivion games.
 The BepInEx log confirms a successful load with:
 
 ```text
-Better BoP Alpha 0.6.13 loaded: native Integrated tribe picking, replay branches, and scaled action prices.
+Better BoP Alpha 0.6.14 loaded: native Integrated tribe picking, replay branches, and scaled action prices.
 ```
 
 ## Development
