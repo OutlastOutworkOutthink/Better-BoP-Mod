@@ -1,4 +1,4 @@
-# Better Battle of Polytopia Mod — Alpha 0.6.12
+# Better Battle of Polytopia Mod — Alpha 0.6.13
 
 This Alpha keeps the working Oblivion, Discord integration, universal-peace,
 advanced-settings, and Modded multiplayer behavior locked, then adds local
@@ -10,7 +10,7 @@ All other earlier gameplay and experimental UI changes remain inactive.
 Open **Creative**, continue to tribe/game setup, and select **Oblivion** in the
 same rule row as **Perfection**, **Domination**, and **Infinity**.
 
-Alpha 0.6.12 retains both the visible legacy setup row and UI2's later layout
+Alpha 0.6.13 retains both the visible legacy setup row and UI2's later layout
 callbacks, after Polytopia has actually created the game-mode controls.
 
 Oblivion keeps all normal Creative setup choices, but the match itself uses
@@ -107,14 +107,20 @@ player returns to Ongoing/Replays or leaves Multiplayer.
 
 ## Advanced match settings
 
-Creative/Oblivion and multiplayer game setup keep Polytopia's native Map Type
-and Map Size rows above the advanced section. A single native-style,
-mod-owned collapsible control follows them with the exact labels **Show Advanced
-Settings** and **Hide Advanced Settings**. It is wired directly instead of
-depending on Polytopia's optional advanced-settings callback. Expanding it
-displays three native percentage rows. Every
-row offers **25%**, **50%**, **100%** (default), **150%**, **200%**, **300%**, and
-**500%**:
+Advanced settings are available only after choosing **Creative** on Polytopia's
+top-level Perfection / Domination / Creative screen. Every Creative rules
+submode remains eligible, including its internal Perfection, Domination,
+Infinity, and Oblivion choices; those internal choices do not change the
+top-level Creative selection. Perfection and Domination entered from the
+top-level screen never display or apply these settings.
+
+Creative setup keeps Polytopia's native Map Type and Map Size rows above the
+advanced section. A single native-style, mod-owned collapsible control follows
+them with the exact labels **Show Advanced Settings** and **Hide Advanced
+Settings**. It is wired directly instead of depending on Polytopia's optional
+advanced-settings callback. Expanding it displays three native percentage
+rows. Every row offers **25%**, **50%**, **100%** (default), **150%**, **200%**,
+**300%**, and **500%**:
 
 - **Unit cost for you** multiplies the rules owner's training prices and
   rounds upward. Bots retain normal prices. At 500%, a 2-star Warrior costs 10
@@ -132,6 +138,10 @@ The selected percentages are snapshotted when a supported game is created, so
 changing the setup defaults does not rewrite older games. Network games embed a
 compact invisible marker for modded clients, while a game-ID cache preserves
 the values across restarts.
+Collapsing **Hide Advanced Settings**, or returning to the top-level screen and
+choosing Perfection or Domination, immediately resets all three settings to
+**100%**. Entering Creative again also starts with the section collapsed and
+all three values at **100%**.
 Each list and its description has its own layout row, and only these three
 rows collapse. The mod creates clean native controls instead of cloning the
 already-populated Map Size row, recovers one named set across setup rebuilds,
@@ -147,7 +157,8 @@ the centred value without affecting horizontal lists on other screens.
 Price changes use short-lived scopes around Polytopia's native train/build UI,
 validation, and execution paths; building prices remain scaled through the
 deferred `BuildAction` that performs the actual deduction, and all building
-information panels use the same value. The original shared data is restored
+information panels and circular map-action buttons use the same value. The
+original shared data is restored
 immediately and bots keep their normal prices. The 100% defaults exit
 before allocating a cost scope or resolving an owner, selections are flushed to
 disk only when starting a game, and no per-frame scan is added.
@@ -167,9 +178,9 @@ controls. Branches never upload commands or write a hot-seat save. There is no
 polling or per-frame patch: serialization happens once on entry and once when
 restoring the replay.
 
-The title screen displays **BBoP Alpha 0.6.12** at bottom-right. It is added by a
-one-time, fail-closed hook after the Start screen has opened; no `StartScreen`
-initialization, layout, or refresh method is patched.
+The title screen displays **BBoP Alpha 0.6.13** at bottom-right. Generic loading
+and screen-show signals schedule a bounded post-layout retry on the existing
+main-thread pump; no `StartScreen` lifecycle method is patched.
 
 ## Inactive archive
 
@@ -179,7 +190,7 @@ explicitly excluded from `BetterBoPMod.dll`. See
 
 ## Install
 
-Download the Alpha 0.6.12 release ZIP, extract it, and place the
+Download the Alpha 0.6.13 release ZIP, extract it, and place the
 `Better-BoP-Mod` folder directly inside Polytopia's `Mods` directory. These files
 must be together at that folder's top level:
 
@@ -195,7 +206,7 @@ converted into Oblivion games.
 The BepInEx log confirms a successful load with:
 
 ```text
-Better BoP Alpha 0.6.12 loaded: native Integrated tribe picking, replay branches, and scaled UI prices.
+Better BoP Alpha 0.6.13 loaded: native Integrated tribe picking, replay branches, and scaled action prices.
 ```
 
 ## Development

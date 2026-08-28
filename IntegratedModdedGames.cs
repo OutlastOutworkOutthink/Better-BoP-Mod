@@ -41,17 +41,6 @@ internal static class IntegratedModdedGames
     private static readonly SemaphoreSlim ResultReportLock = new(1, 1);
     private static readonly SemaphoreSlim HostStartLock = new(1, 1);
     private static readonly ConcurrentQueue<Action> MainThreadActions = new();
-    private static readonly MethodInfo? LoadTribeHeadMethod = AccessTools.Method(
-        typeof(PlayerButton),
-        "LoadFaceIcon",
-        new[] { typeof(TribeType) }
-    );
-    private static readonly MethodInfo? LoadTribelessHeadMethod = AccessTools.Method(
-        typeof(PlayerButton),
-        "LoadFaceIcon",
-        Type.EmptyTypes
-    );
-
     private static ManualLogSource logger = null!;
     private static CancellationTokenSource? polling;
     private static MultiplayerSelectionScreen? owner;
@@ -70,7 +59,7 @@ internal static class IntegratedModdedGames
     private static int mainThreadId;
     private static int renderRequested;
     private static bool listReuseBootstrapLogged;
-    private static bool headRefreshWarningLogged;
+    private static string lastPollFailure = string.Empty;
     private static string lastRenderSummary = string.Empty;
     private static string pendingHostStateKey = string.Empty;
     private static byte[]? pendingHostInitialState;
@@ -82,8 +71,6 @@ internal static class IntegratedModdedGames
     internal static void Initialize(ManualLogSource logSource)
     {
         logger = logSource;
-        if (LoadTribeHeadMethod == null || LoadTribelessHeadMethod == null)
-            logger.LogWarning("Polytopia's native tribe-head loaders were not found; Integrated lobby heads may use profile avatars.");
         polling?.Cancel();
         polling = new CancellationTokenSource();
         _ = PollLoopAsync(polling.Token);
@@ -132,10 +119,18 @@ internal static class IntegratedModdedGames
                         await FlushPendingResultAsync().ConfigureAwait(false);
                     if (active) await ReceiveCommandsAsync().ConfigureAwait(false);
                 }
+                if (lastPollFailure.Length > 0)
+                {
+                    lastPollFailure = string.Empty;
+                    logger.LogInfo("Integrated Modded polling recovered.");
+                }
             }
             catch (Exception exception)
             {
-                logger.LogWarning($"Integrated Modded poll failed: {exception.Message}");
+                string failure = $"{exception.GetType().Name}: {exception.Message}";
+                if (failure != lastPollFailure)
+                    logger.LogWarning($"Integrated Modded poll failed: {failure}");
+                lastPollFailure = failure;
             }
 
             try
@@ -605,14 +600,10 @@ internal static class IntegratedModdedGames
 
             pendingTribePickerMatchId = match.Id;
             GameManager.PreliminaryGameSettings = BuildPickerSettings(match);
+            lastError = string.Empty;
             UIManager.Instance.ShowScreen(UIConstants.Screens.TribePicker, false, null);
-            // Polytopia rebuilds parts of this screen during Show/OnEnable.
-            // Apply on both sides of that lifecycle; the dedicated lifecycle
-            // patch below also restores the callback after deferred rebuilds.
-            TribeSelectorScreen? picker = UIManager.Instance
-                .GetScreen(UIConstants.Screens.TribePicker, true)?
-                .TryCast<TribeSelectorScreen>();
-            if (picker != null) ConfigureTribePicker(match, picker);
+            // The current game builds TribePickerScreen_UI2 asynchronously.
+            // Its confirmation patch submits the chosen vanilla tribe.
             logger.LogInfo($"Opened the native tribe picker for Integrated G{match.BotGameId}.");
         }
         catch (Exception exception)
@@ -624,37 +615,47 @@ internal static class IntegratedModdedGames
         }
     }
 
-    private static void ConfigureTribePicker(IntegratedMatch match, TribeSelectorScreen? picker = null)
+    internal static bool SubmitIntegratedTribe(TribePickerScreen_UI2 picker)
     {
-        picker ??= UIManager.Instance.GetScreen(UIConstants.Screens.TribePicker, true)?.TryCast<TribeSelectorScreen>();
-        if (picker == null) throw new InvalidOperationException("Polytopia's tribe picker is not available.");
-        picker.lobbyId = Il2CppSystem.Guid.Parse(match.Id);
-        picker.SetGameOwnerId(Il2CppSystem.Guid.Parse(match.HostAccountId));
-        picker.currPlayerIdx = match.Role == "host" ? 0 : 1;
-        picker.onCancel = DelegateSupport.ConvertDelegate<Il2CppSystem.Action>(() =>
-            pendingTribePickerMatchId = string.Empty);
-        System.Action<TribeType, SkinType, TribeType, Il2CppSystem.Collections.Generic.List<TribeType>> onPicked =
-            (tribe, _, _, _) =>
-        {
-            if (!string.IsNullOrEmpty(selectingTribeMatchId)) return;
-            selectingTribeMatchId = match.Id;
-            pendingTribePickerMatchId = string.Empty;
-            logger.LogInfo($"Submitting tribe {(int)tribe} for Integrated G{match.BotGameId}.");
-            _ = SelectTribeAsync(match.Id, (int)tribe);
-        };
-        picker.onTribePicked = DelegateSupport.ConvertDelegate<
-            Il2CppSystem.Action<TribeType, SkinType, TribeType, Il2CppSystem.Collections.Generic.List<TribeType>>
-        >(onPicked);
-    }
+        string matchId = pendingTribePickerMatchId;
+        if (string.IsNullOrEmpty(matchId)) return true;
+        if (!string.IsNullOrEmpty(selectingTribeMatchId)) return false;
 
-    internal static void RestoreIntegratedTribePicker(TribeSelectorScreen picker)
-    {
-        if (string.IsNullOrEmpty(pendingTribePickerMatchId)) return;
+        int tribe = (int)(picker.selectedTribe?.type ?? TribeType.None);
+        if (tribe is < 2 or > 17)
+        {
+            PopupManager.ShowSimplePopup(
+                "better-bop-integrated-tribe",
+                "Choose Tribe",
+                "Choose a specific playable tribe for this Integrated game."
+            );
+            return false;
+        }
+
         IntegratedMatch? match = matches.FirstOrDefault(item =>
-            item.Id == pendingTribePickerMatchId &&
+            item.Id == matchId &&
             item.Status is "waiting_for_tribes" or "ready_to_start" &&
             (item.Role == "host" ? !item.HostTribe.HasValue : !item.AwayTribe.HasValue));
-        if (match != null) ConfigureTribePicker(match, picker);
+        if (match == null)
+        {
+            pendingTribePickerMatchId = string.Empty;
+            lastError = "This match is no longer accepting tribe choices.";
+            RequestRender();
+            return false;
+        }
+
+        selectingTribeMatchId = matchId;
+        logger.LogInfo($"Submitting tribe {tribe} for Integrated G{match.BotGameId}.");
+        _ = SelectTribeAsync(matchId, tribe);
+        // Suppress the stock handler: its synthetic PreliminaryGameSettings
+        // belong to Better BoP, not to a vanilla multiplayer lobby.
+        return false;
+    }
+
+    internal static void CloseIntegratedTribePicker()
+    {
+        if (string.IsNullOrEmpty(selectingTribeMatchId))
+            pendingTribePickerMatchId = string.Empty;
     }
 
     private static GameSettings BuildPickerSettings(IntegratedMatch match)
@@ -683,6 +684,9 @@ internal static class IntegratedModdedGames
         return match != null;
     }
 
+    private static bool CanPickOwnTribe(IntegratedMatch match, int? ownTribe) =>
+        !ownTribe.HasValue && match.Status is ("waiting_for_tribes" or "ready_to_start");
+
     internal static bool ShowIntegratedPlayerInfo(LobbyPopup popup, Il2CppSystem.Nullable<Il2CppSystem.Guid> userId)
     {
         if (!TryGetIntegratedLobby(popup.lobbyGameViewModel, out IntegratedMatch? match) || match == null) return true;
@@ -692,7 +696,7 @@ internal static class IntegratedModdedGames
             ? match.HostTribe
             : match.AwayTribe;
         if (string.Equals(accountId, localAccountId, StringComparison.OrdinalIgnoreCase) &&
-            !selectedTribe.HasValue && match.Status == "waiting_for_tribes")
+            CanPickOwnTribe(match, selectedTribe))
         {
             popup.Hide();
             OpenTribePicker(match.Id);
@@ -746,16 +750,15 @@ internal static class IntegratedModdedGames
     {
         if (!TryGetIntegratedLobby(popup.lobbyGameViewModel, out IntegratedMatch? match) || match == null) return;
         if (popup.addPlayerButton != null) popup.addPlayerButton.gameObject.SetActive(false);
-        RefreshIntegratedPlayerHeads(popup, match);
+        HideIntegratedReadyBadges(popup);
         popup.Description = GetIntegratedLobbyDescription(match, popup.Description);
 
         if (popup.Buttons == null || popup.Buttons.Length == 0) return;
         UITextButton actionButton = popup.Buttons[popup.Buttons.Length - 1];
         int? ownTribe = match.Role == "host" ? match.HostTribe : match.AwayTribe;
         int? opponentTribe = match.Role == "host" ? match.AwayTribe : match.HostTribe;
-        string? label = match.Status switch
+        string? label = CanPickOwnTribe(match, ownTribe) ? "PICK TRIBE" : match.Status switch
         {
-            "waiting_for_tribes" when !ownTribe.HasValue => "PICK TRIBE",
             "ready_to_start" when match.Role == "host" && ownTribe.HasValue && opponentTribe.HasValue => "START GAME",
             "provisioning" when match.Role == "host" => "CONTINUE SETUP",
             "active" => active && activeMatchId == match.Id ? "GAME OPEN" : "OPEN GAME",
@@ -769,38 +772,13 @@ internal static class IntegratedModdedGames
         }
     }
 
-    private static void RefreshIntegratedPlayerHeads(LobbyPopup popup, IntegratedMatch match)
+    private static void HideIntegratedReadyBadges(LobbyPopup popup)
     {
-        if (popup.playerButtons == null || popup.presentedPlayers == null) return;
-        int count = Math.Min(popup.playerButtons.Count, popup.presentedPlayers.Count);
-        for (int index = 0; index < count; index++)
+        if (popup.playerButtons == null) return;
+        foreach (PlayerButton button in popup.playerButtons)
         {
-            PlayerButton button = popup.playerButtons[index];
-            ParticipatorViewModel participator = popup.presentedPlayers[index];
-            string accountId = participator.UserId.ToString();
-            int? tribe = string.Equals(accountId, match.HostAccountId, StringComparison.OrdinalIgnoreCase)
-                ? match.HostTribe
-                : string.Equals(accountId, match.AwayAccountId, StringComparison.OrdinalIgnoreCase)
-                    ? match.AwayTribe
-                    : null;
-
-            try
-            {
-                button.BadgeEnabled = false;
-                if (button.badgeHolder != null) button.badgeHolder.gameObject.SetActive(false);
-                if (tribe.HasValue)
-                    LoadTribeHeadMethod?.Invoke(button, new object[] { (TribeType)tribe.Value });
-                else
-                    LoadTribelessHeadMethod?.Invoke(button, Array.Empty<object>());
-            }
-            catch (Exception exception)
-            {
-                if (!headRefreshWarningLogged)
-                {
-                    headRefreshWarningLogged = true;
-                    logger.LogWarning($"Could not repaint an Integrated lobby tribe head: {exception.Message}");
-                }
-            }
+            button.BadgeEnabled = false;
+            if (button.badgeHolder != null) button.badgeHolder.gameObject.SetActive(false);
         }
     }
 
@@ -831,7 +809,7 @@ internal static class IntegratedModdedGames
         if (!TryGetIntegratedLobby(popup.lobbyGameViewModel, out IntegratedMatch? match) || match == null) return true;
         int? ownTribe = match.Role == "host" ? match.HostTribe : match.AwayTribe;
         int? opponentTribe = match.Role == "host" ? match.AwayTribe : match.HostTribe;
-        if (action == "start" && !ownTribe.HasValue && match.Status == "waiting_for_tribes")
+        if (action == "start" && CanPickOwnTribe(match, ownTribe))
         {
             popup.Hide();
             OpenTribePicker(match.Id);
@@ -942,13 +920,24 @@ internal static class IntegratedModdedGames
     {
         try
         {
-            if (!await MutateMatchAsync(matchId, "tribe", new { tribe }).ConfigureAwait(false))
+            bool selected = await MutateMatchAsync(matchId, "tribe", new { tribe }).ConfigureAwait(false);
+            if (!selected)
+            {
                 logger.LogWarning($"Integrated tribe selection failed for match {matchId}; the choice remains unlocked.");
+                pendingTribePickerMatchId = matchId;
+                return;
+            }
+
+            pendingTribePickerMatchId = string.Empty;
+            await RunOnMainThreadAsync(() =>
+            {
+                UIManager.Instance.PopCurrentScreen();
+                return true;
+            }).ConfigureAwait(false);
         }
         finally
         {
             selectingTribeMatchId = string.Empty;
-            pendingTribePickerMatchId = string.Empty;
         }
     }
 
@@ -1632,7 +1621,11 @@ internal static class ModdedPullRefreshPatch
 internal static class IntegratedMainThreadPumpPatch
 {
     [HarmonyPostfix]
-    private static void DrainIntegratedWork() => IntegratedModdedGames.PumpMainThread();
+    private static void DrainIntegratedWork()
+    {
+        IntegratedModdedGames.PumpMainThread();
+        HomeVersionLabel.Tick();
+    }
 }
 
 [HarmonyPatch(typeof(PlayerDataUtils), nameof(PlayerDataUtils.GetPlayerData),
@@ -1641,23 +1634,25 @@ internal static class IntegratedSyntheticPlayerDataPatch
 {
     [HarmonyPrefix]
     private static bool UseIntegratedSeat(
-        ParticipatorViewModel participator,
+        ParticipatorViewModel __0,
         ref PlayerData __result
-    ) => !IntegratedModdedGames.TryGetIntegratedPlayerData(participator, out __result);
+    ) => !IntegratedModdedGames.TryGetIntegratedPlayerData(__0, out __result);
 }
 
-[HarmonyPatch]
-internal static class IntegratedTribePickerLifecyclePatch
+[HarmonyPatch(typeof(TribePickerScreen_UI2), "OnTribePicked")]
+internal static class IntegratedTribePickerSubmitPatch
 {
-    private static IEnumerable<MethodBase> TargetMethods()
-    {
-        yield return AccessTools.Method(typeof(TribeSelectorScreen), "OnEnable");
-        yield return AccessTools.Method(typeof(TribeSelectorScreen), nameof(TribeSelectorScreen.OnScreenUpdated));
-    }
+    [HarmonyPrefix]
+    private static bool SubmitToIntegratedServer(TribePickerScreen_UI2 __instance) =>
+        IntegratedModdedGames.SubmitIntegratedTribe(__instance);
+}
 
+[HarmonyPatch(typeof(TribePickerScreen_UI2), "OnHide")]
+internal static class IntegratedTribePickerClosePatch
+{
     [HarmonyPostfix]
-    private static void RestoreIntegratedCallback(TribeSelectorScreen __instance) =>
-        IntegratedModdedGames.RestoreIntegratedTribePicker(__instance);
+    private static void ClearIntegratedSelection() =>
+        IntegratedModdedGames.CloseIntegratedTribePicker();
 }
 
 [HarmonyPatch(typeof(LobbyPopup), "OnShowPlayerInfo")]

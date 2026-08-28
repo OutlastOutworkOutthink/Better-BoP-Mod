@@ -4,6 +4,7 @@ using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using System.Reflection;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 namespace BetterBoPMod;
 
@@ -29,10 +30,21 @@ internal static class ReplayPassAndPlay
     private static ManualLogSource logger = null!;
     private static ReplayClient? restoreClient;
     private static bool active;
+    private static bool branching;
     private static bool restoring;
 
     internal static bool Active => active;
     internal static void Initialize(ManualLogSource logSource) => logger = logSource;
+
+    internal static bool ReadyToBranch
+    {
+        get
+        {
+            ClientBase? client = GameManager.Client;
+            return !active && !branching && !restoring && client != null && client.IsReplay &&
+                   !client.ActionManager.IsProcessing && !client.ActionManager.IsSimulating;
+        }
+    }
 
     internal static bool CanReceive(CommandBase? command, GameState? state)
     {
@@ -43,46 +55,138 @@ internal static class ReplayPassAndPlay
                command.IsValid(state);
     }
 
-    internal static void Begin(ClientBase client, CommandBase command)
+    internal static bool TryBeginFromInput(string source) =>
+        TryBegin(GameManager.Client, source);
+
+    internal static void MoveFromReplay(UnitState replayUnit, WorldCoordinates destination)
     {
-        if (active || !client.IsReplay || !IsTrigger(command)) return;
+        if (replayUnit == null || !TryBegin(GameManager.Client, "move-target")) return;
 
         try
         {
-            restoreClient = CloneReplay(client);
-            client.ClearTargetState();
-            client.clientType = ClientBase.ClientType.PassAndPlay;
-            client.doAutoSwitchPlayers = true;
-            client.SetNewLocalPlayerTurnForPassAndPlay(client.GameState.CurrentPlayer);
-            if (client.ActionManager.IsRecap) client.ActionManager.EndRecap();
-            client.ActionManager.Resume();
+            GameState state = GameManager.GameState;
+            if (!state.TryGetUnit(replayUnit.id, out UnitState branchUnit) || branchUnit == null)
+                throw new InvalidOperationException($"Unit {replayUnit.id} was missing from the replay branch.");
+
+            MoveCommand command = new(state.CurrentPlayer, branchUnit, destination);
+            if (!command.IsValid(state))
+                throw new InvalidOperationException($"Move for unit {replayUnit.id} became invalid after branching.");
+
+            GameManager.Client.SendCommand(command);
+        }
+        catch (Exception exception)
+        {
+            logger.LogError($"Could not apply the first replay-branch move: {exception}");
+            ReturnToReplay();
+        }
+    }
+
+    internal static bool RouteCommand(ClientBase source, CommandBase command)
+    {
+        if (active)
+        {
+            if (source.clientType == ClientBase.ClientType.PassAndPlay) return true;
+            TrySendOnBranch(command);
+            return false;
+        }
+
+        if (!source.IsReplay || !IsTrigger(command) ||
+            !TryBegin(source, command is MoveCommand ? "move-command" : "research-command"))
+            return true;
+
+        TrySendOnBranch(command);
+        return false;
+    }
+
+    private static void TrySendOnBranch(CommandBase command)
+    {
+        try
+        {
+            GameState state = GameManager.GameState;
+            CommandBase mapped = command;
+            if (command is MoveCommand move)
+            {
+                if (!state.TryGetUnit(move.UnitId, out UnitState unit) || unit == null)
+                    throw new InvalidOperationException($"Unit {move.UnitId} was missing from the replay branch.");
+                mapped = new MoveCommand(state.CurrentPlayer, unit, move.To);
+            }
+            else if (command is ResearchCommand research)
+            {
+                mapped = new ResearchCommand(state.CurrentPlayer, research.Type);
+            }
+
+            if (!mapped.IsValid(state))
+                throw new InvalidOperationException($"{mapped.GetType().Name} became invalid after branching.");
+            GameManager.Client.SendCommand(mapped);
+        }
+        catch (Exception exception)
+        {
+            logger.LogError($"Could not apply the first replay-branch command: {exception}");
+            ReturnToReplay();
+        }
+    }
+
+    private static bool TryBegin(ClientBase? client, string source)
+    {
+        if (!ReadyToBranch || client == null || !client.IsReplay) return false;
+
+        branching = true;
+        try
+        {
+            Il2CppStructArray<byte> snapshot = CaptureSnapshot(client);
+            restoreClient = DecodeSnapshot(snapshot) as ReplayClient ??
+                throw new InvalidOperationException("Replay snapshot did not restore as a replay client.");
+
+            ClientBase stateClone = DecodeSnapshot(snapshot);
+            if (stateClone.GameState.CurrentTurn != client.GameState.CurrentTurn ||
+                stateClone.GameState.CurrentCommand != client.GameState.CurrentCommand ||
+                stateClone.GameState.CurrentPlayer != client.GameState.CurrentPlayer)
+                throw new InvalidOperationException("Replay snapshot did not preserve the selected position.");
+
+            byte player = stateClone.GameState.CurrentPlayer;
+            ClientBase branch = ClientBase.CreateFakeSession(stateClone.GameState, player) ??
+                throw new InvalidOperationException("Polytopia did not create a local branch client.");
+            branch.clientType = ClientBase.ClientType.PassAndPlay;
+            branch.doAutoSwitchPlayers = true;
+            branch.SetNewLocalPlayerTurnForPassAndPlay(player);
+            if (branch.ActionManager.IsRecap) branch.ActionManager.EndRecap();
+            branch.ActionManager.Resume();
+            GameManager.Instance.fakeSession = branch;
+            if (GameManager.Client?.clientType != ClientBase.ClientType.PassAndPlay)
+                throw new InvalidOperationException("Polytopia did not activate the local replay branch.");
             active = true;
             logger.LogMessage(
-                $"Replay branch started at turn {client.GameState.CurrentTurn}, " +
-                $"command {client.GameState.CurrentCommand}, player {client.GameState.CurrentPlayer}."
+                $"Replay branch started from {source} at turn {branch.GameState.CurrentTurn}, " +
+                $"command {branch.GameState.CurrentCommand}, player {branch.GameState.CurrentPlayer}."
             );
         }
         catch (Exception exception)
         {
             logger.LogError($"Could not start replay pass-and-play: {exception}");
             RestoreAfterFailedStart();
-            return;
+            return false;
+        }
+        finally
+        {
+            branching = false;
         }
 
         try { RefreshHud(); }
         catch (Exception exception) { logger.LogWarning($"Could not refresh replay-branch controls: {exception.Message}"); }
+        return true;
     }
 
     internal static void ReturnToReplay()
     {
         if (!active || restoreClient == null) return;
 
+        ClientBase? branch = GameManager.Instance.fakeSession;
         try
         {
             ReplayClient replay = restoreClient;
             active = false;
             restoring = true;
-            restoreClient = null;
+            GameManager.ClearFakeSession();
             GameManager.Instance.SetReplayClient(replay);
             GameManager.Instance.LoadLevel();
             logger.LogMessage(
@@ -92,6 +196,8 @@ internal static class ReplayPassAndPlay
         }
         catch (Exception exception)
         {
+            if (branch != null) GameManager.Instance.fakeSession = branch;
+            active = branch != null;
             restoring = false;
             logger.LogError($"Could not return to the replay snapshot: {exception}");
         }
@@ -99,14 +205,20 @@ internal static class ReplayPassAndPlay
 
     internal static void OnGameReady()
     {
+        if (restoring)
+        {
+            if (GameManager.Client?.IsReplay != true) return;
+            restoring = false;
+            restoreClient = null;
+            UnityEngine.Object.FindObjectOfType<ReplayInterface>()?.timeline?.Pause();
+            return;
+        }
+
         if (active && GameManager.Client?.clientType != ClientBase.ClientType.PassAndPlay)
         {
             active = false;
             restoreClient = null;
         }
-        if (!restoring) return;
-        restoring = false;
-        UnityEngine.Object.FindObjectOfType<ReplayInterface>()?.timeline?.Pause();
     }
 
     internal static void Configure(ReplayInterface? replayInterface)
@@ -149,14 +261,18 @@ internal static class ReplayPassAndPlay
         Configure(UnityEngine.Object.FindObjectOfType<ReplayInterface>());
     }
 
-    private static ReplayClient CloneReplay(ClientBase source)
+    private static Il2CppStructArray<byte> CaptureSnapshot(ClientBase source)
     {
         ClientSerializationWrapper wrapper = new(source);
-        object encoded = EncodeMethod.Invoke(
+        return EncodeMethod.Invoke(
             null,
             new object[] { wrapper, source.GameState.Version }
-        ) ?? throw new InvalidOperationException("Replay snapshot encoding returned no data.");
+        ) as Il2CppStructArray<byte> ??
+            throw new InvalidOperationException("Replay snapshot encoding returned no data.");
+    }
 
+    private static ClientBase DecodeSnapshot(Il2CppStructArray<byte> encoded)
+    {
         object[] arguments =
         {
             encoded,
@@ -166,9 +282,8 @@ internal static class ReplayPassAndPlay
         if (DecodeMethod.Invoke(null, arguments) is not true)
             throw new InvalidOperationException("Replay snapshot decoding failed.");
 
-        ClientBase clone = ((ClientSerializationWrapper)arguments[1]).GetDeserializedClient();
-        return clone as ReplayClient ??
-               throw new InvalidOperationException($"Replay snapshot restored as {clone?.GetType().Name ?? "null"}.");
+        return ((ClientSerializationWrapper)arguments[1]).GetDeserializedClient() ??
+               throw new InvalidOperationException("Replay snapshot restored without a client.");
     }
 
     private static bool IsTrigger(CommandBase? command) =>
@@ -177,23 +292,87 @@ internal static class ReplayPassAndPlay
     private static void RestoreAfterFailedStart()
     {
         active = false;
-        if (restoreClient == null) return;
+        branching = false;
+        if (restoreClient == null)
+        {
+            try { GameManager.ClearFakeSession(); }
+            catch (Exception exception)
+            {
+                logger.LogWarning($"Could not clear a partial replay branch: {exception.Message}");
+            }
+            return;
+        }
 
         try
         {
             restoring = true;
+            GameManager.ClearFakeSession();
             GameManager.Instance.SetReplayClient(restoreClient);
             GameManager.Instance.LoadLevel();
         }
         catch (Exception exception)
         {
+            restoring = false;
+            try { GameManager.ClearFakeSession(); }
+            catch { }
             logger.LogError($"Could not restore replay after branch startup failed: {exception}");
         }
         finally
         {
-            restoreClient = null;
+            if (!restoring) restoreClient = null;
         }
     }
+}
+
+[HarmonyPatch(typeof(ClientInteraction), nameof(ClientInteraction.SelectTileInternal), new[] { typeof(Tile) })]
+internal static class ReplayPassAndPlayMoveIntentPatch
+{
+    [HarmonyPrefix]
+    private static bool StartBeforeMove(ClientInteraction __instance, Tile tile)
+    {
+        if (!ReplayPassAndPlay.ReadyToBranch || tile == null) return true;
+        Unit? unit = __instance.selectedUnit;
+        if (unit == null || unit.UnitState.owner != GameManager.GameState.CurrentPlayer ||
+            !unit.CanMoveTo(tile.Coordinates)) return true;
+
+        UnitState replayUnit = unit.UnitState;
+        __instance.ClearSelection();
+        ReplayPassAndPlay.MoveFromReplay(replayUnit, tile.Coordinates);
+        return false;
+    }
+}
+
+[HarmonyPatch(typeof(TechItem), nameof(TechItem.RefreshState), new[] { typeof(bool) })]
+internal static class ReplayPassAndPlayTechStatePatch
+{
+    [HarmonyPrefix]
+    private static void AllowReplayResearch(ref bool __0)
+    {
+        if (ReplayPassAndPlay.ReadyToBranch) __0 = false;
+    }
+}
+
+[HarmonyPatch(typeof(TechItem), "OnClicked", new[] { typeof(int), typeof(BaseEventData) })]
+internal static class ReplayPassAndPlayTechIntentPatch
+{
+    [HarmonyPrefix]
+    private static void StartBeforeResearchPopup(TechItem __instance)
+    {
+        if (!ReplayPassAndPlay.ReadyToBranch) return;
+
+        GameState state = GameManager.GameState;
+        ResearchCommand intent = new(state.CurrentPlayer, __instance.TechData.type);
+        if (intent.IsValid(state) && ReplayPassAndPlay.TryBeginFromInput("tech-click"))
+            __instance.RefreshState(false);
+    }
+}
+
+[HarmonyPatch(typeof(TechItem), "OnResearchTech")]
+internal static class ReplayPassAndPlayResearchFallbackPatch
+{
+    [HarmonyPrefix]
+    private static void StartBeforeResearch() =>
+        ReplayPassAndPlay.TryBeginFromInput("research-button");
 }
 
 [HarmonyPatch(typeof(ClientActionManager), nameof(ClientActionManager.CanReceiveCommand))]
@@ -210,8 +389,8 @@ internal static class ReplayPassAndPlayInputPatch
 internal static class ReplayPassAndPlayCommandPatch
 {
     [HarmonyPrefix]
-    private static void StartBranch(ClientBase __instance, CommandBase command) =>
-        ReplayPassAndPlay.Begin(__instance, command);
+    private static bool RouteBranchCommand(ClientBase __instance, CommandBase command) =>
+        ReplayPassAndPlay.RouteCommand(__instance, command);
 }
 
 [HarmonyPatch(typeof(HudScreen), nameof(HudScreen.ShouldShowReplayInterface))]
@@ -262,12 +441,4 @@ internal static class ReplayPassAndPlayNoSavePatch
 
     [HarmonyPrefix]
     private static bool KeepBranchInMemory() => !ReplayPassAndPlay.Active;
-}
-
-[HarmonyPatch(typeof(ClientBase), nameof(ClientBase.SendCommandRemote), new[] { typeof(CommandBase) })]
-[HarmonyPriority(Priority.First)]
-internal static class ReplayPassAndPlayNoNetworkPatch
-{
-    [HarmonyPrefix]
-    private static bool KeepBranchLocal() => !ReplayPassAndPlay.Active;
 }

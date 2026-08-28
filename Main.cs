@@ -4,7 +4,7 @@ using HarmonyLib;
 namespace BetterBoPMod;
 
 /// <summary>
-/// Alpha 0.6.12 keeps the locked gameplay baselines, adds local replay
+/// Alpha 0.6.13 keeps the locked gameplay baselines, adds local replay
 /// branches, and retains the rule that no native StartScreen method is patched.
 /// </summary>
 public static class Main
@@ -75,7 +75,8 @@ public static class Main
         SafePatch(typeof(ModdedPullRefreshPatch), logger);
         SafePatch(typeof(IntegratedMainThreadPumpPatch), logger);
         SafePatch(typeof(IntegratedSyntheticPlayerDataPatch), logger);
-        SafePatch(typeof(IntegratedTribePickerLifecyclePatch), logger);
+        SafePatch(typeof(IntegratedTribePickerSubmitPatch), logger);
+        SafePatch(typeof(IntegratedTribePickerClosePatch), logger);
         SafePatch(typeof(IntegratedLobbyPlayerPatch), logger);
         SafePatch(typeof(IntegratedLobbyRowStatePatch), logger);
         SafePatch(typeof(IntegratedLobbyBadgePatch), logger);
@@ -121,21 +122,24 @@ public static class Main
         SafePatch(typeof(AdvancedBuildingCostUiPatch), logger);
         SafePatch(typeof(AdvancedBuildingCostValidationPatch), logger);
         SafePatch(typeof(AdvancedBuildingCostExecutionPatch), logger);
-        SafePatch(typeof(AdvancedBuildingCostPopupPatch), logger);
-        SafePatch(typeof(AdvancedSettingsMainModeResetPatch), logger);
+        SafePatch(typeof(AdvancedSettingsMainModeSelectionPatch), logger);
         SafePatch(typeof(AdvancedEnemyHealthPatch), logger);
         SafePatch(typeof(AdvancedEnemySpawnHealthPatch), logger);
         SafePatch(typeof(AdvancedConvertedUnitHealthPatch), logger);
+        SafePatch(typeof(ReplayPassAndPlayMoveIntentPatch), logger);
+        SafePatch(typeof(ReplayPassAndPlayTechStatePatch), logger);
+        SafePatch(typeof(ReplayPassAndPlayTechIntentPatch), logger);
+        SafePatch(typeof(ReplayPassAndPlayResearchFallbackPatch), logger);
         SafePatch(typeof(ReplayPassAndPlayInputPatch), logger);
         SafePatch(typeof(ReplayPassAndPlayCommandPatch), logger);
         SafePatch(typeof(ReplayPassAndPlayHudPatch), logger);
         SafePatch(typeof(ReplayPassAndPlayUiPatch), logger);
         SafePatch(typeof(ReplayPassAndPlayReadyPatch), logger);
         SafePatch(typeof(ReplayPassAndPlayNoSavePatch), logger);
-        SafePatch(typeof(ReplayPassAndPlayNoNetworkPatch), logger);
         SafePatch(typeof(HomeVersionScreenOpenPatch), logger);
+        SafePatch(typeof(HomeVersionLoadingCompletePatch), logger);
         SafePatch(typeof(HomeVersionShowScreenPatch), logger);
-        logger.LogMessage("Better BoP Alpha 0.6.12 loaded: native Integrated tribe picking, replay branches, and scaled UI prices.");
+        logger.LogMessage("Better BoP Alpha 0.6.13 loaded: native Integrated tribe picking, replay branches, and scaled action prices.");
     }
 
     private static void SafePatch(Type patchType, ManualLogSource logger)
@@ -143,7 +147,6 @@ public static class Main
         try
         {
             Harmony.CreateAndPatchAll(patchType);
-            logger.LogInfo($"Loaded Better BoP patch: {patchType.Name}");
         }
         catch (Exception exception)
         {
