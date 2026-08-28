@@ -87,6 +87,8 @@ public static class Main
         SafePatch(typeof(IntegratedLobbyStartGamePatch), logger);
         SafePatch(typeof(IntegratedLobbyInvitePatch), logger);
         SafePatch(typeof(IntegratedLobbyLeavePatch), logger);
+        SafePatch(typeof(IntegratedLaunchSeedPatch), logger);
+        SafePatch(typeof(IntegratedSessionChangedPatch), logger);
         SafePatch(typeof(IntegratedModdedCommandPatch), logger);
         SafePatch(typeof(IntegratedModdedResultPatch), logger);
 

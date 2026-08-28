@@ -31,6 +31,7 @@ internal static class IntegratedModdedGames
     private const string ServerBaseUrl = "https://better-bop-server-production.up.railway.app";
     private const string ServerTokenKey = "betterbop.server.token.0.5.14";
     private const string RulesetId = "better-bop-0.5.14";
+    private const string RulesetHash = "fdee6c4a2fcb0d3fd9b31c0de271031b3363ad7ffd3d6fc16c55e1aa748add89";
     private const int TinyDrylandTileCount = 121;
     private const int TinyDrylandSideLength = 11;
     private const int IntegratedTurnTimeMinutes = 24 * 60;
@@ -44,15 +45,18 @@ internal static class IntegratedModdedGames
     private static ManualLogSource logger = null!;
     private static CancellationTokenSource? polling;
     private static MultiplayerSelectionScreen? owner;
+    private static MultiplayerSelectionScreen? moddedOwner;
+    private static MultiplayerScreen? moddedScreen;
     private static IntegratedMatch[] matches = Array.Empty<IntegratedMatch>();
-    private static bool selected;
+    private static volatile bool selected;
     private static bool loading;
     private static string lastError = string.Empty;
     private static string activeGameId = string.Empty;
     private static string activeMatchId = string.Empty;
-    private static string pendingWinnerAccountId = string.Empty;
+    private static readonly ConcurrentDictionary<string, string> PendingResults = new(StringComparer.OrdinalIgnoreCase);
     private static int nextCommandIndex;
     private static bool active;
+    private static volatile bool activeSession;
     private static bool deferredTabLogged;
     private static bool connectionPromptShown;
     private static bool reconnectRequired;
@@ -65,8 +69,11 @@ internal static class IntegratedModdedGames
     private static byte[]? pendingHostInitialState;
     private static string selectingTribeMatchId = string.Empty;
     private static string pendingTribePickerMatchId = string.Empty;
+    private static GameSettings? tribePickerSettingsBackup;
+    private static bool tribePickerOwnsSettings;
+    [ThreadStatic] private static LaunchManifest? pendingLaunchManifest;
 
-    internal static bool Active => active;
+    internal static bool Active => active && activeSession;
 
     internal static void Initialize(ManualLogSource logSource)
     {
@@ -114,10 +121,10 @@ internal static class IntegratedModdedGames
             {
                 if (await RunOnMainThreadAsync(HasCurrentAccountLink).ConfigureAwait(false))
                 {
-                    await RefreshMatchesAsync(false).ConfigureAwait(false);
-                    if (!string.IsNullOrWhiteSpace(pendingWinnerAccountId))
-                        await FlushPendingResultAsync().ConfigureAwait(false);
-                    if (active) await ReceiveCommandsAsync().ConfigureAwait(false);
+                    if (selected) await RefreshMatchesAsync(false).ConfigureAwait(false);
+                    if (!PendingResults.IsEmpty)
+                        await FlushPendingResultsAsync().ConfigureAwait(false);
+                    if (Active) await ReceiveCommandsAsync().ConfigureAwait(false);
                 }
                 if (lastPollFailure.Length > 0)
                 {
@@ -135,7 +142,7 @@ internal static class IntegratedModdedGames
 
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(active ? 3 : 12), cancellationToken).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromSeconds(Active ? 3 : 12), cancellationToken).ConfigureAwait(false);
             }
             catch (TaskCanceledException)
             {
@@ -150,6 +157,13 @@ internal static class IntegratedModdedGames
         {
             owner = screen;
             UIHorizontalList list = screen.ScreenSelectionList;
+            if (list != null && list.data != null && list.ids != null)
+            {
+                for (int index = 0; index < list.data.Length; index++)
+                {
+                    if (IsModdedIndex(list, index)) return true;
+                }
+            }
             if (list == null || !TryGetVisibleTabLabels(list, out List<string> currentLabels, out string source))
             {
                 if (!deferredTabLogged)
@@ -165,14 +179,6 @@ internal static class IntegratedModdedGames
                     );
                 }
                 return false;
-            }
-
-            if (list.data != null && list.ids != null)
-            {
-                for (int index = 0; index < list.data.Length; index++)
-                {
-                    if (IsModdedIndex(list, index)) return true;
-                }
             }
 
             int moddedIndex = currentLabels.FindIndex(
@@ -280,6 +286,7 @@ internal static class IntegratedModdedGames
     {
         MultiplayerSelectionScreen? screen = owner;
         if (screen != null) EnsureTab(screen);
+        if (selected && moddedScreen?.isActiveAndEnabled == true) RequestRender();
     }
 
     internal static void EnsureOwnedTab(UIHorizontalList list)
@@ -303,31 +310,101 @@ internal static class IntegratedModdedGames
         EnsureTab(screen);
         if (!IsModdedIndex(screen.ScreenSelectionList, index))
         {
+            if (!selected) return true;
+            moddedScreen?.Hide();
             selected = false;
             connectionPromptShown = false;
             Interlocked.Exchange(ref renderRequested, 0);
             SetModdedNavigation(screen, false);
+            // Modded handles its tab without running the stock selector. Force
+            // the next native tab through its full Ongoing/Replays transition,
+            // including the very first switch away from Modded.
+            screen.currentScreenType = UIConstants.Screens.None;
             return true;
         }
 
         bool enteringModded = !selected;
+        screen.replayScreen?.Hide();
+        screen.multiplayerScreen?.Hide();
+        MultiplayerScreen? content = EnsureModdedScreen(screen);
+        if (content == null) return false;
         selected = true;
+        screen.currentScreenType = UIConstants.Screens.None;
         if (enteringModded) connectionPromptShown = false;
         SetModdedNavigation(screen, true);
-        screen.replayScreen?.Hide();
-        screen.multiplayerScreen?.Show(true);
+        content.Show(true);
         RequestRender();
         _ = RefreshMatchesAsync(true);
         return false;
     }
 
+    private static MultiplayerScreen? EnsureModdedScreen(MultiplayerSelectionScreen screen)
+    {
+        if (moddedScreen != null && moddedOwner?.Pointer == screen.Pointer) return moddedScreen;
+        if (moddedScreen != null)
+        {
+            moddedScreen.gameObject.SetActive(false);
+            UnityEngine.Object.Destroy(moddedScreen.gameObject);
+        }
+        moddedScreen = null;
+        moddedOwner = null;
+        MultiplayerScreen? template = screen.multiplayerScreen;
+        if (template == null) return null;
+        try
+        {
+            // The template is hidden before cloning, so the clone stays
+            // inactive until its pointer is registered. Its first OnEnable is
+            // therefore already protected from stock list construction.
+            template.Hide();
+            MultiplayerScreen clone = UnityEngine.Object.Instantiate(template, template.transform.parent);
+            clone.name = "Better BoP Modded Multiplayer";
+            clone.gameObject.SetActive(false);
+            if (clone.rows != null)
+                foreach (UIBasicButton row in clone.rows)
+                    if (row != null)
+                    {
+                        row.gameObject.SetActive(false);
+                        UnityEngine.Object.Destroy(row.gameObject);
+                    }
+            if (clone.otherRows != null)
+                foreach (UnityEngine.GameObject row in clone.otherRows)
+                    if (row != null)
+                    {
+                        row.SetActive(false);
+                        UnityEngine.Object.Destroy(row);
+                    }
+            clone.rows = new Il2CppSystem.Collections.Generic.List<UIBasicButton>();
+            clone.otherRows = new Il2CppSystem.Collections.Generic.List<UnityEngine.GameObject>();
+            clone.listReuse = clone.container == null ? null : new ListReuseHelper(clone.container);
+            moddedOwner = screen;
+            moddedScreen = clone;
+            logger.LogInfo("Created the isolated Modded multiplayer screen.");
+            return clone;
+        }
+        catch (Exception exception)
+        {
+            logger.LogError($"Could not create the Modded multiplayer screen: {exception}");
+            return null;
+        }
+    }
+
     internal static void LeaveScreen(MultiplayerSelectionScreen screen)
     {
         if (owner == null || owner.Pointer != screen.Pointer) return;
+        // Opening either vanilla tribe-picker implementation temporarily
+        // disables its parent selection screen. Keep the owned Modded view and
+        // session alive so the picker can submit and return to the same tab.
+        if (!string.IsNullOrEmpty(pendingTribePickerMatchId)) return;
         selected = false;
         connectionPromptShown = false;
         SetModdedNavigation(screen, false);
         Interlocked.Exchange(ref renderRequested, 0);
+        RestoreTribePickerSettings();
+        pendingTribePickerMatchId = string.Empty;
+        MultiplayerScreen? content = moddedScreen;
+        moddedScreen = null;
+        moddedOwner = null;
+        if (content != null) UnityEngine.Object.Destroy(content.gameObject);
     }
 
     private static void SetModdedNavigation(MultiplayerSelectionScreen screen, bool modded)
@@ -355,13 +432,13 @@ internal static class IntegratedModdedGames
         await RefreshMatchesAsync(true, true).ConfigureAwait(false);
         await RunOnMainThreadAsync(() =>
         {
-            owner?.multiplayerScreen?.refresher?.EndRefreshing();
+            moddedScreen?.refresher?.EndRefreshing();
             return true;
         }).ConfigureAwait(false);
     }
 
     private static bool OwnsModdedList(MultiplayerScreen screen) =>
-        selected && owner?.multiplayerScreen != null && owner.multiplayerScreen.Pointer == screen.Pointer;
+        moddedScreen != null && moddedScreen.Pointer == screen.Pointer;
 
     /// <summary>
     /// GameManager.Update is a stable Unity main-thread boundary in Polytopia
@@ -395,13 +472,9 @@ internal static class IntegratedModdedGames
     private static void RenderOnMainThread()
     {
         if (!selected) return;
-        MultiplayerScreen? screen = owner?.multiplayerScreen;
+        MultiplayerScreen? screen = moddedScreen;
         if (screen == null) return;
-        if (!screen.isActiveAndEnabled)
-        {
-            RequestRender();
-            return;
-        }
+        if (!screen.isActiveAndEnabled) return;
         ListReuseHelper.Guard? refresh = null;
         try
         {
@@ -574,15 +647,10 @@ internal static class IntegratedModdedGames
     internal static bool TryGetIntegratedPlayerData(ParticipatorViewModel participator, out PlayerData data)
     {
         data = null!;
-        if (participator?.AvatarStateData == null || participator.AvatarStateData.Length != 0) return false;
+        if (!selected || participator?.AvatarStateData == null || participator.AvatarStateData.Length != 0)
+            return false;
         string accountId = participator.UserId.ToString();
-        IntegratedMatch? match = matches.FirstOrDefault(item =>
-            string.Equals(item.HostAccountId, accountId, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(item.AwayAccountId, accountId, StringComparison.OrdinalIgnoreCase));
-        if (match == null) return false;
-        int? tribe = string.Equals(match.HostAccountId, accountId, StringComparison.OrdinalIgnoreCase)
-            ? match.HostTribe
-            : match.AwayTribe;
+        int? tribe = participator.SelectedTribe is >= 2 and <= 17 ? participator.SelectedTribe : null;
         data = BuildPlayer(accountId, participator.Name, tribe);
         return true;
     }
@@ -591,6 +659,9 @@ internal static class IntegratedModdedGames
     {
         try
         {
+            if (!string.IsNullOrEmpty(pendingTribePickerMatchId) ||
+                !string.IsNullOrEmpty(selectingTribeMatchId))
+                throw new InvalidOperationException("Your tribe choice is already being saved.");
             IntegratedMatch? match = matches.FirstOrDefault(item => item.Id == matchId);
             if (match == null || match.Status is not ("waiting_for_tribes" or "ready_to_start"))
                 throw new InvalidOperationException("This match is no longer accepting tribe choices.");
@@ -598,30 +669,36 @@ internal static class IntegratedModdedGames
             if (ownTribe.HasValue)
                 throw new InvalidOperationException("Your tribe is already locked for this game.");
 
-            pendingTribePickerMatchId = match.Id;
+            tribePickerSettingsBackup = GameManager.PreliminaryGameSettings;
+            tribePickerOwnsSettings = true;
             GameManager.PreliminaryGameSettings = BuildPickerSettings(match);
+            pendingTribePickerMatchId = match.Id;
             lastError = string.Empty;
             UIManager.Instance.ShowScreen(UIConstants.Screens.TribePicker, false, null);
-            // The current game builds TribePickerScreen_UI2 asynchronously.
-            // Its confirmation patch submits the chosen vanilla tribe.
             logger.LogInfo($"Opened the native tribe picker for Integrated G{match.BotGameId}.");
         }
         catch (Exception exception)
         {
             pendingTribePickerMatchId = string.Empty;
+            RestoreTribePickerSettings();
             lastError = exception.Message;
             logger.LogError($"Could not open the Integrated tribe picker: {exception}");
             RequestRender();
         }
     }
 
-    internal static bool SubmitIntegratedTribe(TribePickerScreen_UI2 picker)
+    internal static bool SubmitIntegratedTribe(object picker)
     {
         string matchId = pendingTribePickerMatchId;
-        if (string.IsNullOrEmpty(matchId)) return true;
+        if (string.IsNullOrEmpty(matchId)) return string.IsNullOrEmpty(selectingTribeMatchId);
         if (!string.IsNullOrEmpty(selectingTribeMatchId)) return false;
 
-        int tribe = (int)(picker.selectedTribe?.type ?? TribeType.None);
+        int tribe = (int)(picker switch
+        {
+            TribePickerScreen_UI2 current => current.selectedTribe?.type ?? TribeType.None,
+            TribeSelectorScreen legacy => legacy.selectedTribe?.type ?? TribeType.None,
+            _ => TribeType.None,
+        });
         if (tribe is < 2 or > 17)
         {
             PopupManager.ShowSimplePopup(
@@ -639,23 +716,36 @@ internal static class IntegratedModdedGames
         if (match == null)
         {
             pendingTribePickerMatchId = string.Empty;
+            RestoreTribePickerSettings();
             lastError = "This match is no longer accepting tribe choices.";
             RequestRender();
             return false;
         }
 
         selectingTribeMatchId = matchId;
+        pendingTribePickerMatchId = string.Empty;
+        RestoreTribePickerSettings();
         logger.LogInfo($"Submitting tribe {tribe} for Integrated G{match.BotGameId}.");
         _ = SelectTribeAsync(matchId, tribe);
-        // Suppress the stock handler: its synthetic PreliminaryGameSettings
-        // belong to Better BoP, not to a vanilla multiplayer lobby.
+        // Close this owned picker immediately. Both picker implementations are
+        // suppressed, so Polytopia can never create a stock multiplayer lobby.
+        UIManager.Instance.PopCurrentScreen();
         return false;
     }
 
     internal static void CloseIntegratedTribePicker()
     {
-        if (string.IsNullOrEmpty(selectingTribeMatchId))
-            pendingTribePickerMatchId = string.Empty;
+        pendingTribePickerMatchId = string.Empty;
+        RestoreTribePickerSettings();
+        RequestRender();
+    }
+
+    private static void RestoreTribePickerSettings()
+    {
+        if (!tribePickerOwnsSettings) return;
+        GameManager.PreliminaryGameSettings = tribePickerSettingsBackup;
+        tribePickerSettingsBackup = null;
+        tribePickerOwnsSettings = false;
     }
 
     private static GameSettings BuildPickerSettings(IntegratedMatch match)
@@ -685,7 +775,8 @@ internal static class IntegratedModdedGames
     }
 
     private static bool CanPickOwnTribe(IntegratedMatch match, int? ownTribe) =>
-        !ownTribe.HasValue && match.Status is ("waiting_for_tribes" or "ready_to_start");
+        !ownTribe.HasValue && match.Status is ("waiting_for_tribes" or "ready_to_start") &&
+        !string.Equals(selectingTribeMatchId, match.Id, StringComparison.OrdinalIgnoreCase);
 
     internal static bool ShowIntegratedPlayerInfo(LobbyPopup popup, Il2CppSystem.Nullable<Il2CppSystem.Guid> userId)
     {
@@ -753,15 +844,15 @@ internal static class IntegratedModdedGames
         HideIntegratedReadyBadges(popup);
         popup.Description = GetIntegratedLobbyDescription(match, popup.Description);
 
-        if (popup.Buttons == null || popup.Buttons.Length == 0) return;
-        UITextButton actionButton = popup.Buttons[popup.Buttons.Length - 1];
+        UITextButton? actionButton = popup.TopButton;
+        if (actionButton == null) return;
         int? ownTribe = match.Role == "host" ? match.HostTribe : match.AwayTribe;
         int? opponentTribe = match.Role == "host" ? match.AwayTribe : match.HostTribe;
         string? label = CanPickOwnTribe(match, ownTribe) ? "PICK TRIBE" : match.Status switch
         {
             "ready_to_start" when match.Role == "host" && ownTribe.HasValue && opponentTribe.HasValue => "START GAME",
             "provisioning" when match.Role == "host" => "CONTINUE SETUP",
-            "active" => active && activeMatchId == match.Id ? "GAME OPEN" : "OPEN GAME",
+            "active" => Active && activeMatchId == match.Id ? "GAME OPEN" : "OPEN GAME",
             _ => null,
         };
         actionButton.gameObject.SetActive(label != null);
@@ -825,13 +916,13 @@ internal static class IntegratedModdedGames
         if (action == "start" && match.Status == "provisioning" && match.Role == "host")
         {
             popup.Hide();
-            _ = ProvisionHostAsync(match.Id);
+            _ = StartMatchAsync(match.Id);
             return false;
         }
         if (action == "start" && match.Status == "active")
         {
             popup.Hide();
-            if (!active || activeMatchId != match.Id) _ = OpenMatchAsync(match.Id);
+            if (!Active || activeMatchId != match.Id) _ = OpenMatchAsync(match.Id);
             return false;
         }
         string description = action switch
@@ -920,24 +1011,14 @@ internal static class IntegratedModdedGames
     {
         try
         {
-            bool selected = await MutateMatchAsync(matchId, "tribe", new { tribe }).ConfigureAwait(false);
-            if (!selected)
-            {
+            MatchMutationResponse? selected = await MutateMatchAsync(matchId, "tribe", new { tribe }).ConfigureAwait(false);
+            if (selected == null)
                 logger.LogWarning($"Integrated tribe selection failed for match {matchId}; the choice remains unlocked.");
-                pendingTribePickerMatchId = matchId;
-                return;
-            }
-
-            pendingTribePickerMatchId = string.Empty;
-            await RunOnMainThreadAsync(() =>
-            {
-                UIManager.Instance.PopCurrentScreen();
-                return true;
-            }).ConfigureAwait(false);
         }
         finally
         {
             selectingTribeMatchId = string.Empty;
+            RequestRender();
         }
     }
 
@@ -946,11 +1027,15 @@ internal static class IntegratedModdedGames
         if (!await HostStartLock.WaitAsync(0).ConfigureAwait(false)) return;
         try
         {
-            if (!await MutateMatchAsync(matchId, "start", new { }).ConfigureAwait(false)) return;
-            IntegratedMatch? match = matches.FirstOrDefault(item => item.Id == matchId && item.Status == "provisioning");
-            if (match == null) throw new InvalidOperationException("The server did not make this match ready for hosting.");
+            MatchMutationResponse? started = await MutateMatchAsync(matchId, "start", new { }).ConfigureAwait(false);
+            IntegratedMatch? match = started?.Match ?? matches.FirstOrDefault(item => item.Id == matchId);
+            if (match == null || started?.LaunchManifest == null)
+                throw new InvalidOperationException("The server returned no Integrated launch manifest.");
             string token = await EnsureServerTokenAsync().ConfigureAwait(false);
-            await StartHostAsync(match, token).ConfigureAwait(false);
+            if (match.Status == "active") await ResumeParticipantAsync(match, token).ConfigureAwait(false);
+            else if (match.Status == "provisioning")
+                await StartHostAsync(match, token, started.LaunchManifest).ConfigureAwait(false);
+            else throw new InvalidOperationException("The server did not make this match ready for hosting.");
             await RefreshMatchesAsync(false).ConfigureAwait(false);
         }
         catch (Exception exception)
@@ -982,30 +1067,11 @@ internal static class IntegratedModdedGames
         }
     }
 
-    private static async Task ProvisionHostAsync(string matchId)
+    private static async Task<MatchMutationResponse?> MutateMatchAsync(string matchId, string action, object payload)
     {
-        if (!await HostStartLock.WaitAsync(0).ConfigureAwait(false)) return;
-        try
-        {
-            IntegratedMatch? match = matches.FirstOrDefault(item => item.Id == matchId && item.Status == "provisioning" && item.Role == "host");
-            if (match == null) throw new InvalidOperationException("This match is not waiting for host setup.");
-            await StartHostAsync(match, await EnsureServerTokenAsync().ConfigureAwait(false)).ConfigureAwait(false);
-            await RefreshMatchesAsync(false, true).ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            lastError = exception.Message;
-            logger.LogError($"Could not finish Integrated host setup: {exception}");
-            RequestRender();
-        }
-        finally
-        {
-            HostStartLock.Release();
-        }
-    }
-
-    private static async Task<bool> MutateMatchAsync(string matchId, string action, object payload)
-    {
+        bool refresh = false;
+        MatchMutationResponse? mutation = null;
+        await RefreshLock.WaitAsync().ConfigureAwait(false);
         try
         {
             string token = await EnsureServerTokenAsync().ConfigureAwait(false);
@@ -1015,16 +1081,50 @@ internal static class IntegratedModdedGames
             string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) throw new HttpRequestException(ServerMessage(response, body));
             lastError = string.Empty;
-            await RefreshMatchesAsync(false, true).ConfigureAwait(false);
-            return true;
+            mutation = JsonSerializer.Deserialize<MatchMutationResponse>(body);
+            refresh = !CommitMutation(matchId, action, mutation);
         }
         catch (Exception exception)
         {
             lastError = exception.Message;
             logger.LogWarning($"Integrated match action {action} failed: {exception.Message}");
-            RequestRender();
-            return false;
         }
+        finally
+        {
+            RefreshLock.Release();
+        }
+        if (mutation != null && refresh) await RefreshMatchesAsync(false, true).ConfigureAwait(false);
+        RequestRender();
+        return mutation;
+    }
+
+    private static bool CommitMutation(string matchId, string action, MatchMutationResponse? mutation)
+    {
+        IntegratedMatch[] snapshot = matches;
+        int index = Array.FindIndex(snapshot, item => item.Id == matchId);
+        if (mutation == null || mutation.MatchId != matchId || index < 0 ||
+            string.IsNullOrEmpty(mutation.Status)) return false;
+        IntegratedMatch current = snapshot[index];
+        IntegratedMatch updated = mutation.Match?.Id == matchId ? mutation.Match : action switch
+        {
+            "tribe" => current with
+            {
+                Status = mutation.Status,
+                HostTribe = mutation.HostTribe,
+                AwayTribe = mutation.AwayTribe,
+            },
+            "start" => current with
+            {
+                Status = mutation.Status,
+                GameId = mutation.GameId ?? current.GameId,
+            },
+            _ => current,
+        };
+        if (ReferenceEquals(updated, current)) return false;
+        IntegratedMatch[] next = (IntegratedMatch[])snapshot.Clone();
+        next[index] = updated;
+        Volatile.Write(ref matches, next);
+        return true;
     }
 
     private static string ServerMessage(HttpResponseMessage response, string body)
@@ -1039,6 +1139,12 @@ internal static class IntegratedModdedGames
     }
 
     private static void RequestRender() => Interlocked.Exchange(ref renderRequested, 1);
+
+    internal static void RefreshActiveSession()
+    {
+        activeSession = active && GameManager.Client != null &&
+            string.Equals(GameManager.Client.CurrentGameId.ToString(), activeGameId, StringComparison.OrdinalIgnoreCase);
+    }
 
     private static async Task<string> EnsureServerTokenAsync()
     {
@@ -1055,6 +1161,7 @@ internal static class IntegratedModdedGames
             integrationToken,
             modVersion = DiscordAccountLink.ModVersion,
             rulesetId = RulesetId,
+            rulesetHash = RulesetHash,
         });
         using HttpResponseMessage response = await HttpClient.PostAsync(
             $"{ServerBaseUrl}/v1/auth/exchange",
@@ -1104,10 +1211,10 @@ internal static class IntegratedModdedGames
         return request;
     }
 
-    private static async Task StartHostAsync(IntegratedMatch match, string token)
+    private static async Task StartHostAsync(IntegratedMatch match, string token, LaunchManifest manifest)
     {
-        if (match.Role != "host" || string.IsNullOrWhiteSpace(match.GameId)) throw new InvalidOperationException("Only the Discord opener can host this game.");
-        string stateKey = $"{match.Id}:{match.GameId}";
+        ValidateLaunchManifest(match, manifest);
+        string stateKey = $"{match.Id}:{manifest.GameId}:{manifest.RulesetHash}:{manifest.Seed}:{manifest.VillageNameSeed}";
         byte[] state;
         if (string.Equals(pendingHostStateKey, stateKey, StringComparison.Ordinal) &&
             pendingHostInitialState is { Length: > 0 })
@@ -1118,14 +1225,26 @@ internal static class IntegratedModdedGames
         {
             state = await RunOnMainThreadAsync(() =>
             {
-                GameSettings settings = BuildSettings(match);
+                GameSettings settings = BuildSettings(match, manifest);
                 GameManager.Instance.SetLocalClient();
-                CreateSessionResult result = GameManager.Client.CreateSession(settings, Il2CppSystem.Guid.Parse(match.GameId));
+                CreateSessionResult result;
+                pendingLaunchManifest = manifest;
+                try
+                {
+                    result = GameManager.Client.CreateSession(settings, Il2CppSystem.Guid.Parse(manifest.GameId));
+                }
+                finally
+                {
+                    pendingLaunchManifest = null;
+                }
                 MapData map = ValidateSession(
                     result,
                     $"Integrated G{match.BotGameId}",
                     TinyDrylandSideLength
                 );
+                if (GameManager.GameState.Seed != manifest.Seed ||
+                    GameManager.GameState.VillageNameSeed != manifest.VillageNameSeed)
+                    throw new InvalidOperationException("Polytopia did not apply the server launch seeds.");
                 logger.LogMessage(
                     $"Generated stock Polytopia map for Integrated G{match.BotGameId}: " +
                     $"{map.Width}x{map.Height}, {map.Tiles.Length} tiles, {GameManager.GameState.PlayerCount} players."
@@ -1136,25 +1255,26 @@ internal static class IntegratedModdedGames
             pendingHostInitialState = state;
         }
         string payload = JsonSerializer.Serialize(new { serializedState = Convert.ToBase64String(state) });
-        using HttpRequestMessage request = AuthorizedRequest(HttpMethod.Put, $"/v1/games/{match.GameId}/initial-state", token, payload);
+        using HttpRequestMessage request = AuthorizedRequest(HttpMethod.Put, $"/v1/games/{manifest.GameId}/initial-state", token, payload);
         using HttpResponseMessage response = await HttpClient.SendAsync(request).ConfigureAwait(false);
         string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
         if (!response.IsSuccessStatusCode) throw new HttpRequestException(ServerMessage(response, body));
         await RunOnMainThreadAsync(() =>
         {
-            if (!active || activeGameId != match.GameId)
+            if (!Active || activeGameId != manifest.GameId)
             {
                 GameManager.Instance.LoadLevel();
                 activeMatchId = match.Id;
-                activeGameId = match.GameId;
+                activeGameId = manifest.GameId;
                 nextCommandIndex = 0;
                 active = true;
+                RefreshActiveSession();
             }
             return true;
         }).ConfigureAwait(false);
         pendingHostStateKey = string.Empty;
         pendingHostInitialState = null;
-        logger.LogMessage($"Hosted Integrated G{match.BotGameId} as Tiny Dryland game {match.GameId}.");
+        logger.LogMessage($"Hosted Integrated G{match.BotGameId} as Tiny Dryland game {manifest.GameId}.");
     }
 
     private static async Task ResumeParticipantAsync(IntegratedMatch match, string token)
@@ -1184,6 +1304,7 @@ internal static class IntegratedModdedGames
             // Restore every command after the initial snapshot on reopen.
             nextCommandIndex = 0;
             active = true;
+            RefreshActiveSession();
             return true;
         }).ConfigureAwait(false);
         await ReceiveCommandsAsync().ConfigureAwait(false);
@@ -1207,9 +1328,8 @@ internal static class IntegratedModdedGames
         return map;
     }
 
-    private static GameSettings BuildSettings(IntegratedMatch match)
+    private static GameSettings BuildSettings(IntegratedMatch match, LaunchManifest manifest)
     {
-        if (!match.HostTribe.HasValue || !match.AwayTribe.HasValue) throw new InvalidOperationException("Both tribes are required.");
         GameSettings settings = new();
         settings.ApplyGameTypeDefaults(GameType.Multiplayer, GameMode.Domination);
         settings.GameName = $"Integrated G{match.BotGameId}";
@@ -1220,9 +1340,43 @@ internal static class IntegratedModdedGames
         settings.mapPreset = MapPreset.Dryland;
         settings.OpponentCount = 1;
         settings.ClearPlayers();
-        settings.AddPlayer(BuildPlayer(match.HostAccountId, match.HostDisplayName, match.HostTribe.Value));
-        settings.AddPlayer(BuildPlayer(match.AwayAccountId, match.AwayDisplayName, match.AwayTribe.Value));
+        settings.AddPlayer(BuildPlayer(manifest.Players[0].AccountId, manifest.Players[0].DisplayName, manifest.Players[0].Tribe));
+        settings.AddPlayer(BuildPlayer(manifest.Players[1].AccountId, manifest.Players[1].DisplayName, manifest.Players[1].Tribe));
         return settings;
+    }
+
+    private static void ValidateLaunchManifest(IntegratedMatch match, LaunchManifest manifest)
+    {
+        if (match.Role != "host" || string.IsNullOrWhiteSpace(match.GameId))
+            throw new InvalidOperationException("Only the Discord opener can host this game.");
+        if (manifest.SchemaVersion != 1 || manifest.GameId != match.GameId ||
+            manifest.RulesetId != RulesetId || manifest.RulesetHash != RulesetHash ||
+            manifest.RatingMode is not ("classic" or "modern") ||
+            manifest.BaseGameMode != "domination" || manifest.MapPreset != "dryland" ||
+            manifest.MapSize != TinyDrylandTileCount || manifest.PlayerCount != 2 ||
+            manifest.Seed < 0 || manifest.VillageNameSeed < 0 ||
+            manifest.Players.Length != 2)
+            throw new InvalidOperationException("The server launch manifest is incompatible with this Better BoP build.");
+        LaunchPlayer host = manifest.Players[0];
+        LaunchPlayer away = manifest.Players[1];
+        if (host.Seat != 1 || host.Role != "host" || away.Seat != 2 || away.Role != "away" ||
+            host.AccountId != match.HostAccountId || away.AccountId != match.AwayAccountId ||
+            host.Tribe != match.HostTribe || away.Tribe != match.AwayTribe ||
+            host.Tribe is < 2 or > 17 || away.Tribe is < 2 or > 17 ||
+            !Il2CppSystem.Guid.TryParse(host.AccountId, out _) ||
+            !Il2CppSystem.Guid.TryParse(away.AccountId, out _))
+            throw new InvalidOperationException("The server launch seats do not match the locked Discord match.");
+    }
+
+    internal static void ApplyLaunchSeeds(ref int seed, GameState state)
+    {
+        LaunchManifest? manifest = pendingLaunchManifest;
+        if (manifest == null) return;
+        seed = manifest.Seed;
+        state.Seed = manifest.Seed;
+        state.VillageNameSeed = manifest.VillageNameSeed;
+        state.randomHash = new XXHash(manifest.Seed);
+        state.villageNameHash = new XXHash(manifest.VillageNameSeed);
     }
 
     private static PlayerData BuildPlayer(string accountId, string name, int? tribeId)
@@ -1261,11 +1415,12 @@ internal static class IntegratedModdedGames
 
     internal static async Task SubmitCommandAsync(CommandBase command)
     {
-        if (!active || string.IsNullOrWhiteSpace(activeGameId)) return;
+        if (!Active || string.IsNullOrWhiteSpace(activeGameId)) return;
+        string gameId = activeGameId;
         try
         {
             byte[] serialized = SerializeCommand(command);
-            await PostSerializedCommandAsync(serialized, command is EndTurnCommand).ConfigureAwait(false);
+            await PostSerializedCommandAsync(gameId, serialized, command is EndTurnCommand).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -1273,25 +1428,35 @@ internal static class IntegratedModdedGames
         }
     }
 
-    private static async Task PostSerializedCommandAsync(byte[] serialized, bool endsTurn)
+    private static async Task PostSerializedCommandAsync(string gameId, byte[] serialized, bool endsTurn)
     {
         await CommandSubmitLock.WaitAsync().ConfigureAwait(false);
         try
         {
+            if (!Active || activeGameId != gameId) return;
             string token = await EnsureServerTokenAsync().ConfigureAwait(false);
+            if (!Active || activeGameId != gameId) return;
+            int commandIndex = nextCommandIndex;
             string payload = JsonSerializer.Serialize(new
             {
-                commandIndex = nextCommandIndex,
+                commandIndex,
                 serializedData = Convert.ToBase64String(serialized),
                 clientStateHash = (string?)null,
                 endsTurn,
             });
-            using HttpRequestMessage request = AuthorizedRequest(HttpMethod.Post, $"/v1/games/{activeGameId}/commands", token, payload);
+            using HttpRequestMessage request = AuthorizedRequest(HttpMethod.Post, $"/v1/games/{gameId}/commands", token, payload);
             using HttpResponseMessage response = await HttpClient.SendAsync(request).ConfigureAwait(false);
             string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) throw new HttpRequestException(ServerMessage(response, body));
             CommandResponse? result = JsonSerializer.Deserialize<CommandResponse>(body);
-            if (result != null) nextCommandIndex = result.NextCommandIndex;
+            if (result != null)
+                await RunOnMainThreadAsync(() =>
+                {
+                    RefreshActiveSession();
+                    if (Active && activeGameId == gameId)
+                        nextCommandIndex = Math.Max(nextCommandIndex, result.NextCommandIndex);
+                    return true;
+                }).ConfigureAwait(false);
         }
         finally
         {
@@ -1301,12 +1466,13 @@ internal static class IntegratedModdedGames
 
     private static async Task ReceiveCommandsAsync()
     {
-        if (string.IsNullOrWhiteSpace(activeGameId)) return;
+        if (!Active || string.IsNullOrWhiteSpace(activeGameId)) return;
         if (!await CommandReceiveLock.WaitAsync(0).ConfigureAwait(false)) return;
+        string gameId = activeGameId;
         try
         {
             string token = await EnsureServerTokenAsync().ConfigureAwait(false);
-            using HttpRequestMessage request = AuthorizedRequest(HttpMethod.Get, $"/v1/games/{activeGameId}/commands?after={nextCommandIndex - 1}", token);
+            using HttpRequestMessage request = AuthorizedRequest(HttpMethod.Get, $"/v1/games/{gameId}/commands?after={nextCommandIndex - 1}", token);
             using HttpResponseMessage response = await HttpClient.SendAsync(request).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) return;
             CommandListResponse? list = JsonSerializer.Deserialize<CommandListResponse>(await response.Content.ReadAsStringAsync().ConfigureAwait(false));
@@ -1314,14 +1480,17 @@ internal static class IntegratedModdedGames
             {
                 if (remote.CommandIndex < nextCommandIndex) continue;
                 byte[] serialized = Convert.FromBase64String(remote.SerializedData);
-                await RunOnMainThreadAsync(() =>
+                bool applied = await RunOnMainThreadAsync(() =>
                 {
+                    RefreshActiveSession();
+                    if (!Active || activeGameId != gameId) return false;
                     CommandBase command = DeserializeCommand(serialized);
                     MethodInfo receive = AccessTools.Method(typeof(ClientBase), "ReceiveCommand", new[] { typeof(CommandBase) });
                     receive.Invoke(GameManager.Client, new object[] { command });
+                    nextCommandIndex = Math.Max(nextCommandIndex, remote.CommandIndex + 1);
                     return true;
                 }).ConfigureAwait(false);
-                nextCommandIndex = remote.CommandIndex + 1;
+                if (!applied) return;
             }
         }
         finally
@@ -1396,39 +1565,47 @@ internal static class IntegratedModdedGames
 
     internal static async Task ReportResultAsync(string winnerAccountId)
     {
-        if (!active || string.IsNullOrWhiteSpace(activeGameId) || string.IsNullOrWhiteSpace(winnerAccountId)) return;
-        pendingWinnerAccountId = winnerAccountId;
-        await FlushPendingResultAsync().ConfigureAwait(false);
+        if (!Active || string.IsNullOrWhiteSpace(activeGameId) || string.IsNullOrWhiteSpace(winnerAccountId)) return;
+        PendingResults[activeGameId] = winnerAccountId;
+        await FlushPendingResultsAsync().ConfigureAwait(false);
     }
 
-    private static async Task FlushPendingResultAsync()
+    private static async Task FlushPendingResultsAsync()
     {
-        if (string.IsNullOrWhiteSpace(activeGameId) || string.IsNullOrWhiteSpace(pendingWinnerAccountId)) return;
+        if (PendingResults.IsEmpty) return;
         if (!await ResultReportLock.WaitAsync(0).ConfigureAwait(false)) return;
         try
         {
-            string gameId = activeGameId;
-            string winnerAccountId = pendingWinnerAccountId;
-            string token = await EnsureServerTokenAsync().ConfigureAwait(false);
-            string payload = JsonSerializer.Serialize(new { winnerAccountId });
-            using HttpRequestMessage request = AuthorizedRequest(HttpMethod.Post, $"/v1/games/{gameId}/result", token, payload);
-            using HttpResponseMessage response = await HttpClient.SendAsync(request).ConfigureAwait(false);
-            string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode) throw new HttpRequestException(ServerMessage(response, body));
+            foreach (KeyValuePair<string, string> pending in PendingResults.ToArray())
+            {
+                string gameId = pending.Key;
+                string winnerAccountId = pending.Value;
+                string token = await EnsureServerTokenAsync().ConfigureAwait(false);
+                string payload = JsonSerializer.Serialize(new { winnerAccountId });
+                using HttpRequestMessage request = AuthorizedRequest(HttpMethod.Post, $"/v1/games/{gameId}/result", token, payload);
+                using HttpResponseMessage response = await HttpClient.SendAsync(request).ConfigureAwait(false);
+                string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode) throw new HttpRequestException(ServerMessage(response, body));
 
-            // Stop intercepting commands as soon as this finished match has been
-            // acknowledged. This keeps ordinary multiplayer completely isolated.
-            pendingWinnerAccountId = string.Empty;
-            active = false;
-            activeGameId = string.Empty;
-            activeMatchId = string.Empty;
-            logger.LogMessage("Integrated game result was accepted by the Better BoP server.");
-            RequestRender();
+                if (PendingResults.TryGetValue(gameId, out string? queuedWinner) && queuedWinner == winnerAccountId)
+                    PendingResults.TryRemove(gameId, out _);
+                await RunOnMainThreadAsync(() =>
+                {
+                    RefreshActiveSession();
+                    if (activeGameId != gameId) return false;
+                    active = false;
+                    activeSession = false;
+                    activeGameId = string.Empty;
+                    activeMatchId = string.Empty;
+                    return true;
+                }).ConfigureAwait(false);
+                logger.LogMessage($"Integrated game {gameId} result was accepted by the Better BoP server.");
+                RequestRender();
+            }
         }
         catch (Exception exception)
         {
-            // Keep the pending winner in memory. The background loop retries it,
-            // so a brief network outage at MatchEnded does not silently lose the result.
+            // Keep pending results in memory for the background retry loop.
             logger.LogWarning($"Integrated result report will retry: {exception.Message}");
         }
         finally
@@ -1472,7 +1649,40 @@ internal static class IntegratedModdedGames
     private sealed class AuthResponse { [JsonPropertyName("token")] public string Token { get; init; } = string.Empty; }
     private sealed class ErrorResponse { [JsonPropertyName("message")] public string Message { get; init; } = string.Empty; }
     private sealed class MatchListResponse { [JsonPropertyName("matches")] public IntegratedMatch[] Matches { get; init; } = Array.Empty<IntegratedMatch>(); }
-    private sealed class IntegratedMatch
+    private sealed class MatchMutationResponse
+    {
+        [JsonPropertyName("matchId")] public string MatchId { get; init; } = string.Empty;
+        [JsonPropertyName("status")] public string Status { get; init; } = string.Empty;
+        [JsonPropertyName("gameId")] public string? GameId { get; init; }
+        [JsonPropertyName("hostTribe")] public int? HostTribe { get; init; }
+        [JsonPropertyName("awayTribe")] public int? AwayTribe { get; init; }
+        [JsonPropertyName("match")] public IntegratedMatch? Match { get; init; }
+        [JsonPropertyName("launchManifest")] public LaunchManifest? LaunchManifest { get; init; }
+    }
+    private sealed class LaunchManifest
+    {
+        [JsonPropertyName("schemaVersion")] public int SchemaVersion { get; init; }
+        [JsonPropertyName("gameId")] public string GameId { get; init; } = string.Empty;
+        [JsonPropertyName("seed")] public int Seed { get; init; }
+        [JsonPropertyName("villageNameSeed")] public int VillageNameSeed { get; init; }
+        [JsonPropertyName("ratingMode")] public string RatingMode { get; init; } = string.Empty;
+        [JsonPropertyName("baseGameMode")] public string BaseGameMode { get; init; } = string.Empty;
+        [JsonPropertyName("mapPreset")] public string MapPreset { get; init; } = string.Empty;
+        [JsonPropertyName("mapSize")] public int MapSize { get; init; }
+        [JsonPropertyName("playerCount")] public int PlayerCount { get; init; }
+        [JsonPropertyName("rulesetId")] public string RulesetId { get; init; } = string.Empty;
+        [JsonPropertyName("rulesetHash")] public string RulesetHash { get; init; } = string.Empty;
+        [JsonPropertyName("players")] public LaunchPlayer[] Players { get; init; } = Array.Empty<LaunchPlayer>();
+    }
+    private sealed class LaunchPlayer
+    {
+        [JsonPropertyName("seat")] public int Seat { get; init; }
+        [JsonPropertyName("role")] public string Role { get; init; } = string.Empty;
+        [JsonPropertyName("accountId")] public string AccountId { get; init; } = string.Empty;
+        [JsonPropertyName("displayName")] public string DisplayName { get; init; } = string.Empty;
+        [JsonPropertyName("tribe")] public int Tribe { get; init; }
+    }
+    private sealed record IntegratedMatch
     {
         [JsonPropertyName("id")] public string Id { get; init; } = string.Empty;
         [JsonPropertyName("bot_game_id")] public string BotGameId { get; init; } = string.Empty;
@@ -1605,9 +1815,15 @@ internal static class ModdedListBuildPatch
     private static bool KeepModdedList(MultiplayerScreen __instance) => IntegratedModdedGames.AllowVanillaListBuild(__instance);
 }
 
-[HarmonyPatch(typeof(MultiplayerScreen), "OnRefreshGames")]
+[HarmonyPatch]
 internal static class ModdedPullRefreshPatch
 {
+    private static IEnumerable<MethodBase> TargetMethods()
+    {
+        yield return AccessTools.Method(typeof(MultiplayerScreen), "OnRefreshTrigger");
+        yield return AccessTools.Method(typeof(MultiplayerScreen), "OnRefreshGames");
+    }
+
     [HarmonyPrefix]
     private static bool RefreshModdedInstead(MultiplayerScreen __instance) =>
         IntegratedModdedGames.HandlePullRefresh(__instance);
@@ -1639,18 +1855,30 @@ internal static class IntegratedSyntheticPlayerDataPatch
     ) => !IntegratedModdedGames.TryGetIntegratedPlayerData(__0, out __result);
 }
 
-[HarmonyPatch(typeof(TribePickerScreen_UI2), "OnTribePicked")]
+[HarmonyPatch]
 internal static class IntegratedTribePickerSubmitPatch
 {
+    private static IEnumerable<MethodBase> TargetMethods()
+    {
+        yield return AccessTools.Method(typeof(TribePickerScreen_UI2), "OnTribePicked");
+        yield return AccessTools.Method(typeof(TribeSelectorScreen), "OnPickTribe");
+    }
+
     [HarmonyPrefix]
-    private static bool SubmitToIntegratedServer(TribePickerScreen_UI2 __instance) =>
+    private static bool SubmitToIntegratedServer(object __instance) =>
         IntegratedModdedGames.SubmitIntegratedTribe(__instance);
 }
 
-[HarmonyPatch(typeof(TribePickerScreen_UI2), "OnHide")]
+[HarmonyPatch]
 internal static class IntegratedTribePickerClosePatch
 {
-    [HarmonyPostfix]
+    private static IEnumerable<MethodBase> TargetMethods()
+    {
+        yield return AccessTools.Method(typeof(TribePickerScreen_UI2), "OnHide");
+        yield return AccessTools.Method(typeof(TribeSelectorScreen), "OnDisable");
+    }
+
+    [HarmonyPrefix]
     private static void ClearIntegratedSelection() =>
         IntegratedModdedGames.CloseIntegratedTribePicker();
 }
@@ -1747,6 +1975,33 @@ internal static class IntegratedLobbyLeavePatch
     [HarmonyPrefix]
     private static bool KeepIntegratedMatch(LobbyPopup __instance) =>
         IntegratedModdedGames.BlockIntegratedLobbyAction(__instance, "leave");
+}
+
+[HarmonyPatch(
+    typeof(MapGenerator),
+    "GenerateWithSeed",
+    new[] { typeof(int), typeof(GameState), typeof(MapGeneratorSettings), typeof(Il2CppSystem.Action) }
+)]
+internal static class IntegratedLaunchSeedPatch
+{
+    [HarmonyPrefix]
+    private static void UseServerManifest(ref int __0, GameState __1) =>
+        IntegratedModdedGames.ApplyLaunchSeeds(ref __0, __1);
+}
+
+[HarmonyPatch]
+internal static class IntegratedSessionChangedPatch
+{
+    private static IEnumerable<MethodBase> TargetMethods()
+    {
+        yield return AccessTools.Method(typeof(ClientBase), nameof(ClientBase.CreateSession),
+            new[] { typeof(GameSettings), typeof(Il2CppSystem.Guid) });
+        yield return AccessTools.Method(typeof(ClientBase), nameof(ClientBase.CreateSession),
+            new[] { typeof(Il2CppStructArray<byte>), typeof(Il2CppSystem.Guid) });
+    }
+
+    [HarmonyPostfix]
+    private static void BindTransportToLoadedGame() => IntegratedModdedGames.RefreshActiveSession();
 }
 
 [HarmonyPatch(typeof(ClientBase), "SendCommandRemote", new[] { typeof(CommandBase) })]
